@@ -14,6 +14,7 @@ class TutorialBot extends PolyMod {
   }
 
   init(pml) {
+    console.log("Tutorial bot init ran");
     pml.registerSimWorkerMixin({
       type: MixinType.INSERT,
       token: "(($o.length = 0), (onmessage = r));",
