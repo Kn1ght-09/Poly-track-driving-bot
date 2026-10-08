@@ -95,9 +95,10 @@ const WORKER_HELPERS = `
 
     if(e.length<48) return null;
 
-    let o=0;
+    // The game's state buffer starts with a 4-byte header, then the fields.
+    let o=4;
 
-    const frames=e[0]|(e[1]<<8)|(e[2]<<16);
+    const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
     o+=3;
 
     const speed=d.getFloat32(o,true);
@@ -128,6 +129,10 @@ const WORKER_HELPERS = `
       w:d.getFloat32(o+12,true)
     };
 
+    if(![speed,position.x,position.y,position.z,quaternion.x,quaternion.y,quaternion.z,quaternion.w].every(Number.isFinite)
+      || Math.abs(speed)>1000
+      || Math.abs(position.x)>100000 || Math.abs(position.y)>100000 || Math.abs(position.z)>100000) return null;
+
     return {
       frames,
       speedKmh:speed,
@@ -153,7 +158,8 @@ const WORKER_HELPERS = `
 
     const target=lookAhead(state.position,state.speedKmh,id);
 
-    const f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
+    // The car's local forward axis is +Z (confirmed from logged heading vs. movement).
+    const f=rotateVec(state.quaternion,{x:0,y:0,z:1});
 
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
@@ -220,6 +226,7 @@ const WORKER_HELPERS = `
       bot.stuck[id]=0;
     }
 
+    bot.dbg={ri:ri,tx:+target.x.toFixed(1),tz:+target.z.toFixed(1),ang:+angle.toFixed(2),steer:+steer.toFixed(2)};
     bot.lastPosition[id]={...state.position};
 
     return {
@@ -263,7 +270,7 @@ const BOT_BODY = `
 
     try {
       globalThis.__ptDbgCount = (globalThis.__ptDbgCount || 0) + 1;
-      if (globalThis.__ptDbgCount % 250 === 1 && globalThis.__ptDbgCount < 400000) {
+      if (globalThis.__ptDbgCount % 500 === 1 && globalThis.__ptDbgCount < 400000) {
         const raw = new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
         console.log(
           "PTBOT_STATE",
@@ -273,6 +280,8 @@ const BOT_BODY = `
             : "decode returned null",
           "controls:",
           JSON.stringify(r),
+          "dbg:",
+          JSON.stringify(globalThis.__ptTutorialBot.dbg),
           "bytes:",
           Array.from(raw.slice(0, 48)).join(",")
         );
