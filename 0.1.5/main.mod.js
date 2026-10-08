@@ -13,12 +13,12 @@ class TutorialBot extends PolyMod {
     this.touchingPhysics = true;
   }
 
-  init = (pml) => { 
+  init(pml) { 
     pml.registerSimWorkerMixin({;
       type: MixinType.INSERT,
       token: "(($o.length = 0), (onmessage = r));",
       func: WORKER_HELPERS
-    });
+    })
 
     pml.registerSimWorkerMixin({
       type: MixinType.REPLACEBETWEEN,
