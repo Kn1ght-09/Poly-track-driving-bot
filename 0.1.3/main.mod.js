@@ -9,12 +9,12 @@ class TutorialBot extends PolyMod {
     this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "OpenAI";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.1.1";
-    this.touchingPhysics = false;
+    this.modVersion = "0.1.3";
+    this.touchingPhysics = true;
   }
 
-  init(pml) {
-    pml.registerSimWorkerMixin({
+  init = (pml) =­­> { 
+    pml.registerSimWorkerMixin({;
       type: MixinType.INSERT,
       token: "(($o.length = 0), (onmessage = r));",
       func: WORKER_HELPERS
