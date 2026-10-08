@@ -6,7 +6,7 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 0.8;   // fraction of your recorded speed the bot aims for (lower = safer, slower)
-const STEER_GAIN = 2.4;     // how hard it steers toward the path (higher = sharper)
+const STEER_GAIN = 3.2;     // how hard it steers toward the path (higher = sharper)
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
@@ -476,7 +476,7 @@ const WORKER_HELPERS = `
     const tl=Math.hypot(dx,dz)||1;
     const fx=f.x/fl, fz=f.z/fl;
     const tx=dx/tl, tz=dz/tl;
-    const cross=fx*tz-fz*tx;
+    const cross=fx*tx-fx*tx;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);   // positive = target is to the right
     const abs=Math.abs(angle);
