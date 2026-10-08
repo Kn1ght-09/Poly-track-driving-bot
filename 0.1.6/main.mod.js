@@ -6,7 +6,7 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 0.92;  // fraction of your recorded speed the bot aims for (lower = safer)
-const STEER_GAIN = 2.4;     // how hard it steers toward the path (higher = sharper)
+const STEER_GAIN = 3;     // how hard it steers toward the path (higher = sharper)
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
