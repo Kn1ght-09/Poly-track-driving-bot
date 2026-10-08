@@ -1,11 +1,22 @@
 import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
 
+// "record" = you drive by hand and the mod records your lap to the Console.
+// "drive"  = the bot drives.
+const MODE = "record";
+
 const WORKER_HELPERS = `
 (() => {
   if (globalThis.__ptTutorialBot) return;
   const ROUTE = [{"x":320,"y":55,"z":20,"type":"Start","checkpointOrder":null},{"x":260,"y":55,"z":0,"type":"TurnSRight","checkpointOrder":null},{"x":180,"y":55,"z":0,"type":"Checkpoint","checkpointOrder":0},{"x":140,"y":45,"z":0,"type":"SlopeDownLong","checkpointOrder":null},{"x":120,"y":35,"z":0,"type":"Slope","checkpointOrder":null},{"x":100,"y":25,"z":0,"type":"Slope","checkpointOrder":null},{"x":80,"y":15,"z":0,"type":"Slope","checkpointOrder":null},{"x":60,"y":5,"z":0,"type":"Slope","checkpointOrder":null},{"x":-20,"y":0,"z":0,"type":"StraightWide","checkpointOrder":null},{"x":-80,"y":0,"z":0,"type":"OuterCornerWide","checkpointOrder":null},{"x":-180,"y":0,"z":0,"type":"CheckpointWide","checkpointOrder":1},{"x":-160,"y":0,"z":-20,"type":"OuterCornerWide","checkpointOrder":null},{"x":-100,"y":10,"z":-80,"type":"Checkpoint","checkpointOrder":2},{"x":-100,"y":10,"z":-40,"type":"SlopeUp","checkpointOrder":null},{"x":-120,"y":20,"z":40,"type":"StraightWide","checkpointOrder":null},{"x":-120,"y":20,"z":60,"type":"Plane","checkpointOrder":null},{"x":-140,"y":20,"z":140,"type":"StraightWide","checkpointOrder":null},{"x":-200,"y":20,"z":220,"type":"StraightWide","checkpointOrder":null},{"x":-260,"y":20,"z":260,"type":"TurnShortLeftWide","checkpointOrder":null},{"x":-300,"y":20,"z":280,"type":"Finish","checkpointOrder":null}];
 
   const bot = {
+    mode: "${MODE}",
+    recRun: 0,
+    recChunk: [],
+    recChunkIndex: 0,
+    recDone: false,
+    recLastFrames: undefined,
+    recLastSample: -1,
     enabled: true,
     states: Object.create(null),
     routeIndex: Object.create(null),
@@ -238,6 +249,52 @@ const WORKER_HELPERS = `
     };
   }
 
+  function record(state,id) {
+    if(!state) return;
+
+    // A race restart makes the frame counter go back down: start a new run.
+    if(bot.recLastFrames!==undefined && state.frames<bot.recLastFrames) {
+      bot.recRun++;
+      bot.recChunk=[];
+      bot.recChunkIndex=0;
+      bot.recDone=false;
+      bot.recLastSample=-1;
+      console.log("PTBOT_LAP_NEW_RUN", bot.recRun);
+    }
+    bot.recLastFrames=state.frames;
+
+    if(bot.recDone) return;
+
+    if(state.finishFrames!==null) {
+      if(bot.recChunk.length>0) {
+        console.log("PTBOT_LAP", "run="+bot.recRun, "chunk="+bot.recChunkIndex, JSON.stringify(bot.recChunk));
+      }
+      console.log("PTBOT_LAP_DONE", "run="+bot.recRun, "finishFrames="+state.finishFrames);
+      bot.recChunk=[];
+      bot.recDone=true;
+      return;
+    }
+
+    if(!state.hasStarted) return;
+    if(state.frames%100!==0 || state.frames===bot.recLastSample) return;
+    bot.recLastSample=state.frames;
+
+    // sample: [x, y, z, speed km/h]
+    bot.recChunk.push([
+      +state.position.x.toFixed(1),
+      +state.position.y.toFixed(1),
+      +state.position.z.toFixed(1),
+      Math.round(state.speedKmh)
+    ]);
+
+    if(bot.recChunk.length>=100) {
+      console.log("PTBOT_LAP", "run="+bot.recRun, "chunk="+bot.recChunkIndex, JSON.stringify(bot.recChunk));
+      bot.recChunkIndex++;
+      bot.recChunk=[];
+    }
+  }
+
+  bot.record=record;
   bot.decode=decode;
   bot.choose=choose;
   bot.route=ROUTE;
@@ -246,47 +303,44 @@ const WORKER_HELPERS = `
 `;
 
 const BOT_BODY = `
-  if (e.userControls && globalThis.__ptTutorialBot?.enabled) {
+  if (e.userControls && globalThis.__ptTutorialBot) {
+    const __ptBot = globalThis.__ptTutorialBot;
     let previous = null;
 
     try {
       const previousBuffer = new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
-      previous = globalThis.__ptTutorialBot.decode(previousBuffer.buffer);
+      previous = __ptBot.decode(previousBuffer.buffer);
     }
     catch (_) {}
 
-    if (previous) {
-      r = globalThis.__ptTutorialBot.choose(previous, e.id);
+    if (__ptBot.mode === "record") {
+      try { __ptBot.record(previous, e.id); } catch (_) {}
     }
-    else {
-      r = {
-        up: true,
-        right: false,
-        down: false,
-        left: false,
-        reset: false
-      };
-    }
-
-    try {
-      globalThis.__ptDbgCount = (globalThis.__ptDbgCount || 0) + 1;
-      if (globalThis.__ptDbgCount % 500 === 1 && globalThis.__ptDbgCount < 400000) {
-        const raw = new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
-        console.log(
-          "PTBOT_STATE",
-          globalThis.__ptDbgCount,
-          previous
-            ? JSON.stringify({ speed: previous.speedKmh, started: previous.hasStarted, finish: previous.finishFrames, cp: previous.nextCheckpointIndex, pos: previous.position, quat: previous.quaternion })
-            : "decode returned null",
-          "controls:",
-          JSON.stringify(r),
-          "dbg:",
-          JSON.stringify(globalThis.__ptTutorialBot.dbg),
-          "bytes:",
-          Array.from(raw.slice(0, 48)).join(",")
-        );
+    else if (__ptBot.enabled) {
+      if (previous) {
+        r = __ptBot.choose(previous, e.id);
       }
-    } catch (_) {}
+      else {
+        r = { up: true, right: false, down: false, left: false, reset: false };
+      }
+
+      try {
+        globalThis.__ptDbgCount = (globalThis.__ptDbgCount || 0) + 1;
+        if (globalThis.__ptDbgCount % 500 === 1 && globalThis.__ptDbgCount < 400000) {
+          console.log(
+            "PTBOT_STATE",
+            globalThis.__ptDbgCount,
+            previous
+              ? JSON.stringify({ speed: previous.speedKmh, pos: previous.position })
+              : "decode returned null",
+            "controls:",
+            JSON.stringify(r),
+            "dbg:",
+            JSON.stringify(__ptBot.dbg)
+          );
+        }
+      } catch (_) {}
+    }
   }
 `;
 
