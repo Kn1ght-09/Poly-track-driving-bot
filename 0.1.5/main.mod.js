@@ -18,7 +18,7 @@ class TutorialBot extends PolyMod {
       type: MixinType.INSERT,
       token: "(($o.length = 0), (onmessage = r));",
       func: WORKER_HELPERS
-    })
+    });
 
     pml.registerSimWorkerMixin({
       type: MixinType.REPLACEBETWEEN,
