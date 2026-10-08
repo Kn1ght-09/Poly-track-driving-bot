@@ -3,6 +3,12 @@ import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMo
 const WORKER_HELPERS = `
 (() => {
   if (globalThis.__ptTutorialBot) return;
+  try {
+    console.log("PTBOT_N_SOURCE", typeof n === "function" ? String(n) : "n not in scope");
+    console.log("PTBOT_ONMESSAGE", typeof onmessage === "function" ? String(onmessage) : "no onmessage");
+  } catch (err) {
+    console.log("PTBOT_ERR", String(err));
+  }
   const ROUTE = [{"x":320,"y":55,"z":20,"type":"Start","checkpointOrder":null},{"x":260,"y":55,"z":0,"type":"TurnSRight","checkpointOrder":null},{"x":180,"y":55,"z":0,"type":"Checkpoint","checkpointOrder":0},{"x":140,"y":45,"z":0,"type":"SlopeDownLong","checkpointOrder":null},{"x":120,"y":35,"z":0,"type":"Slope","checkpointOrder":null},{"x":100,"y":25,"z":0,"type":"Slope","checkpointOrder":null},{"x":80,"y":15,"z":0,"type":"Slope","checkpointOrder":null},{"x":60,"y":5,"z":0,"type":"Slope","checkpointOrder":null},{"x":-20,"y":0,"z":0,"type":"StraightWide","checkpointOrder":null},{"x":-80,"y":0,"z":0,"type":"OuterCornerWide","checkpointOrder":null},{"x":-180,"y":0,"z":0,"type":"CheckpointWide","checkpointOrder":1},{"x":-160,"y":0,"z":-20,"type":"OuterCornerWide","checkpointOrder":null},{"x":-100,"y":10,"z":-80,"type":"Checkpoint","checkpointOrder":2},{"x":-100,"y":10,"z":-40,"type":"SlopeUp","checkpointOrder":null},{"x":-120,"y":20,"z":40,"type":"StraightWide","checkpointOrder":null},{"x":-120,"y":20,"z":60,"type":"Plane","checkpointOrder":null},{"x":-140,"y":20,"z":140,"type":"StraightWide","checkpointOrder":null},{"x":-200,"y":20,"z":220,"type":"StraightWide","checkpointOrder":null},{"x":-260,"y":20,"z":260,"type":"TurnShortLeftWide","checkpointOrder":null},{"x":-300,"y":20,"z":280,"type":"Finish","checkpointOrder":null}];
 
   const bot = {
