@@ -15,7 +15,7 @@ class TutorialBot extends PolyMod {
   }
 
   init = (pml) => { 
-    pml.registerSimWorkerMixin({;
+    pml.registerSimWorkerMixin({
       type: MixinType.INSERT,
       token: "(($o.length = 0), (onmessage = r));",
       func: WORKER_HELPERS
