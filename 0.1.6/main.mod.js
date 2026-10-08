@@ -6,7 +6,7 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 0.8;   // fraction of your recorded speed the bot aims for (lower = safer, slower)
-const STEER_GAIN = 3.2;     // how hard it steers toward the path (higher = sharper)
+const STEER_GAIN = 4;     // how hard it steers toward the path (higher = sharper)
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
@@ -287,16 +287,38 @@ const WORKER_HELPERS = `
   // Index of the route point closest to the car (height included, because the
   // track crosses over itself).
   function nearestIndex(p,id) {
-    const start=bot.idx[id] ?? 0;
-    let best=start, bestD=Infinity;
-    const lo=Math.max(0,start-5);
-    const hi=Math.min(N-1,start+40);
-    for(let i=lo;i<=hi;i++) {
+    function nearestIndex(p,id,forceGlobal=false) {
+  const start=bot.idx[id] ?? 0;
+  let best=start, bestD=Infinity;
+
+  const lo=forceGlobal ? 0 : Math.max(0,start-5);
+  const hi=forceGlobal ? N-1 : Math.min(N-1,start+40);
+
+  for(let i=lo;i<=hi;i++) {
+    const d=dist2(p,ROUTE[i]);
+
+    if(d<bestD) {
+      bestD=d;
+      best=i;
+    }
+  }
+
+  // If requested, or if the local search lost the route,
+  // search every recorded point.
+  if(!forceGlobal && bestD>30*30) {
+    for(let i=0;i<N;i++) {
       const d=dist2(p,ROUTE[i]);
+
       if(d<bestD) {
         bestD=d;
         best=i;
       }
+    }
+  }
+
+  bot.idx[id]=best;
+  return best;
+}
     }
     // Lost the route (respawn, big crash): search the whole route.
     if(bestD>30*30) {
@@ -463,8 +485,28 @@ const WORKER_HELPERS = `
       return {up:true, right:false, down:false, left:false, reset:false};
     }
 
-    const speed=Math.abs(state.speedKmh);
-    const i=nearestIndex(state.position,id);
+   // Detect checkpoint respawns or other sudden position jumps.
+const previousPos=bot.lastPos[id];
+let respawned=false;
+
+if(previousPos) {
+  const dx=state.position.x-previousPos.x;
+  const dy=state.position.y-previousPos.y;
+  const dz=state.position.z-previousPos.z;
+
+  if(Math.hypot(dx,dy,dz)>5) {
+    respawned=true;
+
+    // Clear steering and recovery history from before the crash.
+    bot.idx[id]=0;
+    bot.acc[id]=0;
+    bot.stuck[id]=0;
+    bot.hist[id]=[];
+  }
+}
+
+const speed=Math.abs(state.speedKmh);
+const i=nearestIndex(state.position,id,respawned);
     const ld=Math.max(8,Math.min(48,8+speed*0.14));
     const target=lookAhead(state.position,ld,i);
 
