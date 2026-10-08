@@ -10,10 +10,10 @@ class TutorialBot extends PolyMod {
     this.touchingPhysics = false;
   }
 
-  init(pml) {
+  init = (pml) => {
     console.log("Tutorial bot init ran");
     alert("Tutorial bot init ran");
-  }
+  };
 }
 
 export let polyMod = new TutorialBot();
