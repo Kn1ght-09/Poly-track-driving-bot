@@ -5,8 +5,8 @@ import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMo
 const MODE = "drive";
 
 // Tuning knobs for the bot:
-const SPEED_FACTOR = 0.92;  // fraction of your recorded speed the bot aims for (lower = safer)
-const STEER_GAIN = 3;     // how hard it steers toward the path (higher = sharper)
+const SPEED_FACTOR = 0.8;   // fraction of your recorded speed the bot aims for (lower = safer, slower)
+const STEER_GAIN = 2.4;     // how hard it steers toward the path (higher = sharper)
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
@@ -266,6 +266,10 @@ const WORKER_HELPERS = `
     acc: Object.create(null),
     stuck: Object.create(null),
     lastPos: Object.create(null),
+    lastFrames: Object.create(null),
+    hist: Object.create(null),
+    lastCrash: Object.create(null),
+    finLogged: Object.create(null),
     dbg: null,
     recRun: 0,
     recChunk: [],
@@ -330,6 +334,21 @@ const WORKER_HELPERS = `
     }
     const last=ROUTE[N-1];
     return {x:last[0], y:last[1], z:last[2], index:N-1};
+  }
+
+  // How far (metres, sideways) the car is from the recorded line.
+  function crossTrack(p,i) {
+    let best=Infinity;
+    for(let k=Math.max(0,i-1);k<=Math.min(N-2,i);k++) {
+      const ax=ROUTE[k][0], az=ROUTE[k][2], bx=ROUTE[k+1][0], bz=ROUTE[k+1][2];
+      const dx=bx-ax, dz=bz-az;
+      const l2=dx*dx+dz*dz || 1e-9;
+      let t=((p.x-ax)*dx+(p.z-az)*dz)/l2;
+      t=Math.max(0,Math.min(1,t));
+      const d=Math.hypot(p.x-(ax+dx*t),p.z-(az+dz*t));
+      if(d<best) best=d;
+    }
+    return best===Infinity ? 0 : best;
   }
 
   // Speed we want here: your recorded speed, scaled, and low enough now that we
@@ -416,7 +435,31 @@ const WORKER_HELPERS = `
   }
 
   function choose(state,id) {
-    if(!state || !state.hasStarted || state.finishFrames!==null) {
+    if(!state) {
+      return {up:true, right:false, down:false, left:false, reset:false};
+    }
+
+    // A new race (frame counter went back down): forget everything from the last one.
+    const lf=bot.lastFrames[id];
+    if(lf===undefined || state.frames<lf) {
+      bot.idx[id]=0;
+      bot.acc[id]=0;
+      bot.stuck[id]=0;
+      bot.lastPos[id]=undefined;
+      bot.hist[id]=[];
+      bot.lastCrash[id]=-100000;
+      bot.finLogged[id]=false;
+    }
+    bot.lastFrames[id]=state.frames;
+
+    if(!state.hasStarted) {
+      return {up:true, right:false, down:false, left:false, reset:false};
+    }
+    if(state.finishFrames!==null) {
+      if(!bot.finLogged[id]) {
+        bot.finLogged[id]=true;
+        console.log("PTBOT_FINISH", "frames="+state.finishFrames);
+      }
       return {up:true, right:false, down:false, left:false, reset:false};
     }
 
@@ -486,7 +529,40 @@ const WORKER_HELPERS = `
     }
     bot.lastPos[id]={x:state.position.x, y:state.position.y, z:state.position.z};
 
-    bot.dbg={i:i, v:Math.round(speed), want:Math.round(tSpeed), ang:+angle.toFixed(2), steer:+s.toFixed(2)};
+    const err=crossTrack(state.position,i);
+
+    // Crash detection: a big speed drop within about 0.12 s
+    let hist=bot.hist[id];
+    if(!hist) {
+      hist=[];
+      bot.hist[id]=hist;
+    }
+    if(state.frames%10===0 && (hist.length===0 || hist[hist.length-1][0]!==state.frames)) {
+      hist.push([state.frames,speed]);
+      if(hist.length>14) hist.shift();
+    }
+    let vmax=0;
+    for(const h of hist) {
+      if(h[0]>=state.frames-120 && h[1]>vmax) vmax=h[1];
+    }
+    if(vmax-speed>45 && state.frames-(bot.lastCrash[id] ?? -100000)>2000) {
+      bot.lastCrash[id]=state.frames;
+      console.log(
+        "PTBOT_CRASH",
+        "frame="+state.frames,
+        "idx="+i+"/"+(N-1),
+        "pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0),
+        "speed="+Math.round(vmax)+"->"+Math.round(speed),
+        "offLine="+err.toFixed(1)+"m",
+        "want="+Math.round(tSpeed),
+        "ang="+angle.toFixed(2)
+      );
+    }
+    if(reset) {
+      console.log("PTBOT_RESET", "frame="+state.frames, "idx="+i+"/"+(N-1), "pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0));
+    }
+
+    bot.dbg={i:i, v:Math.round(speed), want:Math.round(tSpeed), ang:+angle.toFixed(2), steer:+s.toFixed(2), off:+err.toFixed(1)};
 
     return {up, right, down, left, reset};
   }
@@ -568,7 +644,7 @@ const BOT_BODY = `
 
       try {
         globalThis.__ptDbgCount = (globalThis.__ptDbgCount || 0) + 1;
-        if (globalThis.__ptDbgCount % 500 === 1 && globalThis.__ptDbgCount < 400000) {
+        if (globalThis.__ptDbgCount % 2000 === 1 && globalThis.__ptDbgCount < 400000) {
           console.log(
             "PTBOT_STATE",
             globalThis.__ptDbgCount,
