@@ -1,7 +1,15 @@
+
 import {
   PolyMod,
   MixinType
 } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
+
+// Harmless test: insert code that does not change driving controls.
+const BOT_BODY = `
+  if (e.userControls) {
+    r = r;
+  }
+`;
 
 class TutorialBotTest extends PolyMod {
   constructor() {
@@ -9,16 +17,17 @@ class TutorialBotTest extends PolyMod {
     this.modName = "PolyTrack Bot Test";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.2.3";
+    this.modVersion = "0.2.4";
     this.touchingPhysics = false;
   }
 
- init = (pml) => {
-  pml.registerSimWorkerMixin({
-    type: MixinType.INSERT,
-    token: "function n(e, r) {",
-    func: BOT_BODY
-  });
-};
-  
+  init = (pml) => {
+    pml.registerSimWorkerMixin({
+      type: MixinType.INSERT,
+      token: "function n(e, r) {",
+      func: BOT_BODY
+    });
+  };
+}
+
 export let polyMod = new TutorialBotTest();
