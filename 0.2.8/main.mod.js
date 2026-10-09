@@ -357,7 +357,7 @@ const WORKER_HELPERS = `
     const target=lookAhead(state.position,ld,i);
 
     // The car's local forward axis is +Z.
-    const f=rotateVec(state.quaternion,{x:0,y:0,z:1});
+    const f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
     const fl=Math.hypot(f.x,f.z)||1;
@@ -365,7 +365,7 @@ const WORKER_HELPERS = `
     const fx=f.x/fl, fz=f.z/fl;
     const tx=dx/tl, tz=dz/tl;
 
-    const cross=fz*tx-fx*tz;
+    const cross=fx*tz-fz*tx;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);
     const abs=Math.abs(angle);
