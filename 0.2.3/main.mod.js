@@ -13,13 +13,12 @@ class TutorialBotTest extends PolyMod {
     this.touchingPhysics = false;
   }
 
-  init = (pml) => {
-    pml.registerSimWorkerMixin({
-      type: MixinType.INSERT,
-      token: "(($o.length = 0), (onmessage = r));",
-      func: "\n  // PTBOT_TEST_B\n"
-    });
-  };
-}
-
+ init = (pml) => {
+  pml.registerSimWorkerMixin({
+    type: MixinType.INSERT,
+    token: "function n(e, r) {",
+    func: BOT_BODY
+  });
+};
+  
 export let polyMod = new TutorialBotTest();
