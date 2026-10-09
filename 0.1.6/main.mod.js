@@ -287,7 +287,7 @@ const WORKER_HELPERS = `
   // Index of the route point closest to the car (height included, because the
   // track crosses over itself).
   function nearestIndex(p,id) {
-    function nearestIndex(p,id,forceGlobal=false) {
+function nearestIndex(p,id,forceGlobal=false) {
   const start=bot.idx[id] ?? 0;
   let best=start, bestD=Infinity;
 
@@ -303,8 +303,6 @@ const WORKER_HELPERS = `
     }
   }
 
-  // If requested, or if the local search lost the route,
-  // search every recorded point.
   if(!forceGlobal && bestD>30*30) {
     for(let i=0;i<N;i++) {
       const d=dist2(p,ROUTE[i]);
@@ -319,21 +317,6 @@ const WORKER_HELPERS = `
   bot.idx[id]=best;
   return best;
 }
-    }
-    // Lost the route (respawn, big crash): search the whole route.
-    if(bestD>30*30) {
-      for(let i=0;i<N;i++) {
-        const d=dist2(p,ROUTE[i]);
-        if(d<bestD) {
-          bestD=d;
-          best=i;
-        }
-      }
-    }
-    bot.idx[id]=best;
-    return best;
-  }
-
   // Point on the route that is "ld" metres ahead of the car along the path.
   function lookAhead(p,ld,i) {
     let j=i;
@@ -518,7 +501,7 @@ const i=nearestIndex(state.position,id,respawned);
     const tl=Math.hypot(dx,dz)||1;
     const fx=f.x/fl, fz=f.z/fl;
     const tx=dx/tl, tz=dz/tl;
-    const cross=fx*tx-fx*tz;
+    const cross=fz*tx-fx*tz;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);   // positive = target is to the right
     const abs=Math.abs(angle);
