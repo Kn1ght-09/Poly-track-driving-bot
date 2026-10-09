@@ -286,8 +286,7 @@ const WORKER_HELPERS = `
 
   // Index of the route point closest to the car (height included, because the
   // track crosses over itself).
-  function nearestIndex(p,id) {
-function nearestIndex(p,id,forceGlobal=false) {
+  function nearestIndex(p,id) {function nearestIndex(p,id,forceGlobal=false) {
   const start=bot.idx[id] ?? 0;
   let best=start, bestD=Infinity;
 
