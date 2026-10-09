@@ -1,12 +1,14 @@
 import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
 
-// "drive" = the bot drives the recorded lap.
-// "record" = drive manually to record a lap in the Console.
+// "drive"  = the bot drives the lap you recorded.
+// "record" = you drive by hand and the mod prints your lap to the Console.
 const MODE = "drive";
-const SPEED_FACTOR = 0.8;
-const STEER_GAIN = 3;
 
-// Route points: [x, height, z, speed in km/h]
+// Tuning knobs for the bot:
+const SPEED_FACTOR = 0.8;
+const STEER_GAIN = 4;
+
+// Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
   [319.0,55.3,20.0,5],[318.6,55.3,20,7],[318.3,55.3,20,14],
   [317.8,55.3,20,21],[317.1,55.3,20,28],[316.2,55.3,20,35],
@@ -115,7 +117,6 @@ const ROUTE = [
 const WORKER_HELPERS = `
 (() => {
   if (globalThis.__ptTutorialBot) return;
-
   const ROUTE = ${JSON.stringify(ROUTE)};
   const N = ROUTE.length;
   const SPEED_FACTOR = ${SPEED_FACTOR};
@@ -191,12 +192,7 @@ const WORKER_HELPERS = `
 
       if(len>=remaining) {
         const f=remaining/Math.max(len,1e-9);
-        return {
-          x:ax+(bx-ax)*f,
-          y:ay+(by-ay)*f,
-          z:az+(bz-az)*f,
-          index:k
-        };
+        return {x:ax+(bx-ax)*f,y:ay+(by-ay)*f,z:az+(bz-az)*f,index:k};
       }
 
       remaining-=len;
@@ -360,8 +356,8 @@ const WORKER_HELPERS = `
     const ld=Math.max(8,Math.min(48,8+speed*0.14));
     const target=lookAhead(state.position,ld,i);
 
-    // PolyTrack's car forward axis is local -Z.
-    const f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
+    // The car's local forward axis is +Z.
+    const f=rotateVec(state.quaternion,{x:0,y:0,z:1});
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
     const fl=Math.hypot(f.x,f.z)||1;
@@ -369,8 +365,7 @@ const WORKER_HELPERS = `
     const fx=f.x/fl, fz=f.z/fl;
     const tx=dx/tl, tz=dz/tl;
 
-    // Positive angles correspond to steering right.
-    const cross=fz*tx-fx*tx;
+    const cross=fz*tx-fx*tz;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);
     const abs=Math.abs(angle);
@@ -400,7 +395,6 @@ const WORKER_HELPERS = `
       left=true;
       e+=1;
     }
-
     bot.acc[id]=e;
 
     let reset=false;
@@ -496,8 +490,8 @@ const WORKER_HELPERS = `
       bot.recLastSample=-1;
       console.log("PTBOT_LAP_NEW_RUN",bot.recRun);
     }
-
     bot.recLastFrames=state.frames;
+
     if(bot.recDone) return;
 
     if(state.finishFrames!==null) {
@@ -573,7 +567,8 @@ const BOT_BODY = `
 
       try {
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
-        if(globalThis.__ptDbgCount%2000===1 && globalThis.__ptDbgCount<400000) {
+        if(globalThis.__ptDbgCount%2000===1 &&
+           globalThis.__ptDbgCount<400000) {
           console.log(
             "PTBOT_STATE",
             globalThis.__ptDbgCount,
@@ -594,7 +589,7 @@ const BOT_BODY = `
 class TutorialBot extends PolyMod {
   constructor() {
     super();
-    this.modName = "PolyTrack Driving Bot";
+    this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
     this.modVersion = "0.2.7";
