@@ -9,7 +9,7 @@ class TutorialBotTest extends PolyMod {
     this.modName = "PolyTrack Bot Test";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.2.0";
+    this.modVersion = "0.2.1";
     this.touchingPhysics = false;
   }
 
@@ -17,7 +17,13 @@ class TutorialBotTest extends PolyMod {
     pml.registerSimWorkerMixin({
       type: MixinType.INSERT,
       token: "function n(e, r) {",
-      func: "\n  // PTBOT_MIXIN_TEST\n"
+      func: "\n  // PTBOT_TEST_A\n"
+    });
+
+    pml.registerSimWorkerMixin({
+      type: MixinType.INSERT,
+      token: "(($o.length = 0), (onmessage = r));",
+      func: "\n  // PTBOT_TEST_B\n"
     });
   };
 }
