@@ -697,19 +697,11 @@ class TutorialBot extends PolyMod {
     this.touchingPhysics = true;
   }
 
-  init = (pml) => {
-    pml.registerSimWorkerMixin({
-      type: MixinType.INSERT,
-      token: "function n(e, r) {",
-      func: BOT_BODY
-    });
-
-    pml.registerSimWorkerMixin({
-      type: MixinType.INSERT,
-      token: "(($o.length = 0), (onmessage = r));",
-      func: WORKER_HELPERS
-    });
-  };
-}
-
+init = (pml) => {
+  pml.registerSimWorkerMixin({
+    type: MixinType.INSERT,
+    token: "function n(e, r) {",
+    func: BOT_BODY
+  });
+};
 export let polyMod = new TutorialBot();
