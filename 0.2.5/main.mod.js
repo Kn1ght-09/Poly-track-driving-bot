@@ -742,11 +742,42 @@ const WORKER_HELPERS = `
 `;
 
 const BOT_BODY = `
-  // Harmless test: do not change any driving controls.
-  if (e.userControls) {
-    r = r;
+  if (e.userControls && globalThis.__ptTutorialBot) {
+    const __ptBot = globalThis.__ptTutorialBot;
+    let previous = null;
+
+    try {
+      const previousBuffer =
+        new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
+      previous = __ptBot.decode(previousBuffer.buffer);
+    } catch (_) {}
+
+    if (__ptBot.mode === "record") {
+      if (previous) {
+        __ptBot.record(previous, e.id);
+      }
+    } else if (__ptBot.enabled) {
+      if (previous) {
+        r = __ptBot.choose(previous, e.id);
+      } else {
+        r = {
+          up: true,
+          right: false,
+          down: false,
+          left: false,
+          reset: false
+        };
+      }
+
+      try {
+        if (previous && previous.frames % 60 === 0) {
+          console.log("PTBOT", __ptBot.dbg);
+        }
+      } catch (_) {}
+    }
   }
 `;
+
 
 class TutorialBot extends PolyMod {
   constructor() {
@@ -755,7 +786,7 @@ class TutorialBot extends PolyMod {
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
     this.modVersion = "0.2.5";
-    this.touchingPhysics = false;
+    this.touchingPhysics = true;
   }
 
   init = (pml) => {
