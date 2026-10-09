@@ -370,7 +370,7 @@ const WORKER_HELPERS = `
     const tx=dx/tl, tz=dz/tl;
 
     // Positive angles correspond to steering right.
-    const cross=fx*tz-fz*tx;
+    const cross=fz*tx-fx*tz;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);
     const abs=Math.abs(angle);
