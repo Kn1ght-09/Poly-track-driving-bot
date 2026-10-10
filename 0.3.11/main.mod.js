@@ -11,7 +11,8 @@ const LAT_ACCEL = 40;       // how hard the bot allows itself to corner (your ow
 // Extra speed limits for specific parts of the route: [from point, to point, max km/h].
 // Points 5 to 17 are the first bend of the "S" (the route has 239 points in total).
 // Lower the number to take that bend slower; the jump later needs about 220+ km/h, so don't go below ~85.
-const SLOW_ZONES = [[5, 17, 105]];
+const SLOW_ZONES = [[5, 17, 95]];
+const LOW_SPEED_BOOST = 2;  // steers this much harder at low speed (3x at standstill, back to normal by 150 km/h). 0 = off.
 const LINE_PULL = 0.03;     // extra steering back toward your recorded line (radians per metre off the line). 0 = off.
 const LOOK_BASE = 6;        // how far ahead (metres) the bot aims at low speed; smaller = turns in tighter
 const LOOK_SPEED = 0.09;    // extra look-ahead per km/h
@@ -135,6 +136,7 @@ const WORKER_HELPERS = `
   const STEER_GAIN = ${STEER_GAIN};
   const LAT_ACCEL = ${LAT_ACCEL};
   const LINE_PULL = ${LINE_PULL};
+  const LOW_SPEED_BOOST = ${LOW_SPEED_BOOST};
   const SLOW_ZONES = ${JSON.stringify(SLOW_ZONES)};
   const LOOK_BASE = ${LOOK_BASE};
   const LOOK_SPEED = ${LOOK_SPEED};
@@ -436,7 +438,7 @@ const WORKER_HELPERS = `
     if(abs>1.0 && speed>60) up=false;
 
     const lat=lateral(state.position,i);
-    const s=Math.max(-1,Math.min(1,(angle+LINE_PULL*Math.max(-8,Math.min(8,lat)))*STEER_GAIN*STEER_SIGN));
+    const s=Math.max(-1,Math.min(1,(angle+LINE_PULL*Math.max(-8,Math.min(8,lat)))*STEER_GAIN*(1+LOW_SPEED_BOOST*Math.max(0,1-speed/150))*STEER_SIGN));
     let e=(bot.acc[id] ?? 0)+s;
     let right=false;
     let left=false;
@@ -660,7 +662,7 @@ class TutorialBot extends PolyMod {
     this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.3.9";
+    this.modVersion = "0.3.11";
     this.touchingPhysics = true;
   }
 
