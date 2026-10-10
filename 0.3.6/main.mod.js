@@ -6,7 +6,10 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 1.0;   // 1.0 = your recorded speed; the big jump needs about that much speed
-const STEER_GAIN = 1.5;      // lower = smoother steering (less wiggle). Try 1 to 2.
+const STEER_GAIN = 3.5;      // higher = sharper turns. If it wiggles on straights, lower it (try 2.5).
+const LOOK_BASE = 6;        // how far ahead (metres) the bot aims at low speed; smaller = turns in tighter
+const LOOK_SPEED = 0.09;    // extra look-ahead per km/h
+const LOOK_MAX = 34;        // furthest it will look ahead
 const DECODE_OFFSET = 4;    // the game's data starts with a 4-byte header (confirmed from your console log)
 const STEER_SIGN = -1;      // flips left/right steering. -1 is correct for this game (confirmed from your report)
 const FORWARD_SIGN = 1;     // the car's front is +Z (confirmed from your console log)
@@ -124,6 +127,9 @@ const WORKER_HELPERS = `
   const N = ROUTE.length;
   const SPEED_FACTOR = ${SPEED_FACTOR};
   const STEER_GAIN = ${STEER_GAIN};
+  const LOOK_BASE = ${LOOK_BASE};
+  const LOOK_SPEED = ${LOOK_SPEED};
+  const LOOK_MAX = ${LOOK_MAX};
   const DECODE_OFFSET = ${DECODE_OFFSET};
   const FORWARD_SIGN = ${FORWARD_SIGN};
   const STEER_SIGN = ${STEER_SIGN};
@@ -359,7 +365,7 @@ const WORKER_HELPERS = `
 
     const speed=Math.abs(state.speedKmh);
     const i=nearestIndex(state.position,id,respawned);
-    const ld=Math.max(8,Math.min(48,8+speed*0.14));
+    const ld=Math.max(LOOK_BASE,Math.min(LOOK_MAX,LOOK_BASE+speed*LOOK_SPEED));
     const target=lookAhead(state.position,ld,i);
 
     // The car's local forward axis is +Z. (In this game's coordinates a positive angle means the target is on the LEFT.)
@@ -608,7 +614,7 @@ class TutorialBot extends PolyMod {
     this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.3.6";
+    this.modVersion = "0.3.7";
     this.touchingPhysics = true;
   }
 
