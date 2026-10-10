@@ -353,7 +353,7 @@ const WORKER_HELPERS = `
 
     const speed=Math.abs(state.speedKmh);
     const i=nearestIndex(state.position,id,respawned);
-    const ld=Math.max(8,Math.min(48,8+speed*0.14));
+    const ld=Math.max(18,Math.min(85,18+speed*0.25));
     const target=lookAhead(state.position,ld,i);
 
     // The car's local forward axis is +Z.
