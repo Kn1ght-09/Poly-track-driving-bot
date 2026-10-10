@@ -569,19 +569,27 @@ const BOT_BODY = `
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
         if(globalThis.__ptDbgCount%120===1 &&
            globalThis.__ptDbgCount<500) {
-          console.log(
-            "PTBOT_STATE",
-            globalThis.__ptDbgCount,
-            previous
-              ? JSON.stringify({speed:previous.speedKmh,pos:previous.position})
-              : "decode returned null raw=" + JSON.stringify(
+          console.log(console.log(
+  "PTBOT_STATE",
+  globalThis.__ptDbgCount,
+  "raw:",
+  JSON.stringify(
     Array.from(new Uint8Array(t.HEAPU8.buffer, i, 48))
   ),
-            "controls:",
-            JSON.stringify(r),
-            "dbg:",
-            JSON.stringify(__ptBot.dbg)
-          );
+  "state:",
+  previous
+    ? JSON.stringify({
+        frames: previous.frames,
+        speed: previous.speedKmh,
+        pos: previous.position,
+        q: previous.quaternion
+      })
+    : "decode returned null",
+  "controls:",
+  JSON.stringify(r),
+  "dbg:",
+  JSON.stringify(__ptBot.dbg)
+);
         }
       } catch (_) {}
     }
@@ -594,7 +602,7 @@ class TutorialBot extends PolyMod {
     this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.3.1";
+    this.modVersion = "0.3.2";
     this.touchingPhysics = true;
   }
 
