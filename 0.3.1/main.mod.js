@@ -568,13 +568,15 @@ const BOT_BODY = `
       try {
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
         if(globalThis.__ptDbgCount%120===1 &&
-           globalThis.__ptDbgCount<400000) {
+           globalThis.__ptDbgCount<500) {
           console.log(
             "PTBOT_STATE",
             globalThis.__ptDbgCount,
             previous
               ? JSON.stringify({speed:previous.speedKmh,pos:previous.position})
-              : "decode returned null",
+              : "decode returned null raw=" + JSON.stringify(
+    Array.from(new Uint8Array(t.HEAPU8.buffer, i, 48))
+  ),
             "controls:",
             JSON.stringify(r),
             "dbg:",
