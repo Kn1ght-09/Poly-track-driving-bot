@@ -253,7 +253,7 @@ const WORKER_HELPERS = `
     const d=new DataView(e.buffer,e.byteOffset,e.byteLength);
     if(e.length<48) return null;
 
-    let o=4;
+    let o=0;
     const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
     o+=3;
 
