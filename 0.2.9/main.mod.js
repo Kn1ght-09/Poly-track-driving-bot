@@ -365,7 +365,7 @@ const WORKER_HELPERS = `
     const fx=f.x/fl, fz=f.z/fl;
     const tx=dx/tl, tz=dz/tl;
 
-    const cross=fx*tz-fz*tx;
+    const cross=fz*tx-fx*tz;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);
     const abs=Math.abs(angle);
