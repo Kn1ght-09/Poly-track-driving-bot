@@ -6,7 +6,7 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 0.8;
-const STEER_GAIN = 3;
+const STEER_GAIN = 2;
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
