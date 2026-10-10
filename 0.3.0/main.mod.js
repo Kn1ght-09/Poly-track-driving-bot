@@ -6,7 +6,7 @@ const MODE = "drive";
 
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 0.8;
-const STEER_GAIN = 2;
+const STEER_GAIN = 3;
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
@@ -357,7 +357,7 @@ const WORKER_HELPERS = `
     const target=lookAhead(state.position,ld,i);
 
     // The car's local forward axis is +Z.
-    const f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
+    cconst f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
     const fl=Math.hypot(f.x,f.z)||1;
