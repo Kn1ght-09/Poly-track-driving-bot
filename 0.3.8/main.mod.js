@@ -7,6 +7,12 @@ const MODE = "drive";
 // Tuning knobs for the bot:
 const SPEED_FACTOR = 1.0;   // 1.0 = your recorded speed; the big jump needs about that much speed
 const STEER_GAIN = 3.5;      // higher = sharper turns. If it wiggles on straights, lower it (try 2.5).
+const LAT_ACCEL = 40;       // how hard the bot allows itself to corner (your own lap reached 60 to 80). Lower = slows more for turns.
+// Extra speed limits for specific parts of the route: [from point, to point, max km/h].
+// Points 5 to 17 are the first bend of the "S" (the route has 239 points in total).
+// Lower the number to take that bend slower; the jump later needs about 220+ km/h, so don't go below ~85.
+const SLOW_ZONES = [[5, 17, 95]];
+const LINE_PULL = 0.03;     // extra steering back toward your recorded line (radians per metre off the line). 0 = off.
 const LOOK_BASE = 6;        // how far ahead (metres) the bot aims at low speed; smaller = turns in tighter
 const LOOK_SPEED = 0.09;    // extra look-ahead per km/h
 const LOOK_MAX = 34;        // furthest it will look ahead
@@ -127,6 +133,9 @@ const WORKER_HELPERS = `
   const N = ROUTE.length;
   const SPEED_FACTOR = ${SPEED_FACTOR};
   const STEER_GAIN = ${STEER_GAIN};
+  const LAT_ACCEL = ${LAT_ACCEL};
+  const LINE_PULL = ${LINE_PULL};
+  const SLOW_ZONES = ${JSON.stringify(SLOW_ZONES)};
   const LOOK_BASE = ${LOOK_BASE};
   const LOOK_SPEED = ${LOOK_SPEED};
   const LOOK_MAX = ${LOOK_MAX};
@@ -144,6 +153,7 @@ const WORKER_HELPERS = `
     lastFrames: Object.create(null),
     hist: Object.create(null),
     lastCrash: Object.create(null),
+    lastOff: Object.create(null),
     finLogged: Object.create(null),
     dbg: null,
     recRun: 0,
@@ -234,12 +244,41 @@ const WORKER_HELPERS = `
     return best===Infinity ? 0 : best;
   }
 
+  // Corner speed limit for each route point, from how sharply the route bends there.
+  const CAP=[];
+  for(let k=0;k<N;k++) {
+    let kmax=0;
+    for(let m=Math.max(1,k-2);m<=Math.min(N-2,k+2);m++) {
+      const ax=ROUTE[m][0]-ROUTE[m-1][0], az=ROUTE[m][2]-ROUTE[m-1][2];
+      const bx=ROUTE[m+1][0]-ROUTE[m][0], bz=ROUTE[m+1][2]-ROUTE[m][2];
+      const la=Math.hypot(ax,az), lb=Math.hypot(bx,bz);
+      const dh=Math.abs(Math.atan2(ax*bz-az*bx,ax*bx+az*bz));
+      const curv=dh/Math.max((la+lb)/2,1e-6);
+      if(curv>kmax) kmax=curv;
+    }
+    CAP.push(kmax>1e-6 ? Math.sqrt(LAT_ACCEL/kmax)*3.6 : 1000);
+  }
+
+  // Sideways distance from the recorded line, in metres. Positive = car is to the RIGHT of the line.
+  function lateral(p,i) {
+    const k=Math.max(0,Math.min(N-2,i));
+    const ax=ROUTE[k][0], az=ROUTE[k][2], bx=ROUTE[k+1][0], bz=ROUTE[k+1][2];
+    const dx=bx-ax, dz=bz-az;
+    const l=Math.hypot(dx,dz)||1e-9;
+    let t=((p.x-ax)*dx+(p.z-az)*dz)/(l*l);
+    t=Math.max(0,Math.min(1,t));
+    const ox=p.x-(ax+dx*t), oz=p.z-(az+dz*t);
+    return -(dz*ox-dx*oz)/l;
+  }
+
   function targetSpeed(i) {
     let best=Infinity;
     const hi=Math.min(N-1,i+25);
 
     for(let j=i;j<=hi;j++) {
-      const v=ROUTE[j][3]*SPEED_FACTOR+6*(j-i);
+      let zc=1000;
+      for(const z of SLOW_ZONES) { if(j>=z[0] && j<=z[1] && z[2]<zc) zc=z[2]; }
+      const v=Math.min(ROUTE[j][3]*SPEED_FACTOR,CAP[j],zc)+6*(j-i);
       if(v<best) best=v;
     }
 
@@ -330,6 +369,7 @@ const WORKER_HELPERS = `
       bot.lastPos[id]=undefined;
       bot.hist[id]=[];
       bot.lastCrash[id]=-100000;
+      bot.lastOff[id]=-100000;
       bot.finLogged[id]=false;
     }
     bot.lastFrames[id]=state.frames;
@@ -395,7 +435,8 @@ const WORKER_HELPERS = `
 
     if(abs>1.0 && speed>60) up=false;
 
-    const s=Math.max(-1,Math.min(1,angle*STEER_GAIN*STEER_SIGN));
+    const lat=lateral(state.position,i);
+    const s=Math.max(-1,Math.min(1,(angle+LINE_PULL*Math.max(-8,Math.min(8,lat)))*STEER_GAIN*STEER_SIGN));
     let e=(bot.acc[id] ?? 0)+s;
     let right=false;
     let left=false;
@@ -470,6 +511,10 @@ const WORKER_HELPERS = `
       );
     }
 
+    if(err>5 && state.frames-(bot.lastOff[id] ?? -100000)>150) {
+      bot.lastOff[id]=state.frames;
+      console.log("PTBOT_OFF","frame="+state.frames,"idx="+i+"/"+(N-1),"side="+(lat>0?"right":"left"),"off="+err.toFixed(1)+"m","speed="+Math.round(speed),"pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0));
+    }
     if(reset) {
       console.log(
         "PTBOT_RESET",
@@ -485,7 +530,8 @@ const WORKER_HELPERS = `
       want:Math.round(tSpeed),
       ang:+angle.toFixed(2),
       steer:+s.toFixed(2),
-      off:+err.toFixed(1)
+      off:+err.toFixed(1),
+      lat:+lat.toFixed(1)
     };
 
     return {up,right,down,left,reset};
@@ -614,7 +660,7 @@ class TutorialBot extends PolyMod {
     this.modName = "PolyTrack Tutorial Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.3.7";
+    this.modVersion = "0.3.8";
     this.touchingPhysics = true;
   }
 
