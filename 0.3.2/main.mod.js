@@ -569,7 +569,7 @@ const BOT_BODY = `
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
         if(globalThis.__ptDbgCount%120===1 &&
            globalThis.__ptDbgCount<500) {
-          console.log(console.log(
+          console.log(
   "PTBOT_STATE",
   globalThis.__ptDbgCount,
   "raw:",
