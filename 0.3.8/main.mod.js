@@ -11,7 +11,7 @@ const LAT_ACCEL = 40;       // how hard the bot allows itself to corner (your ow
 // Extra speed limits for specific parts of the route: [from point, to point, max km/h].
 // Points 5 to 17 are the first bend of the "S" (the route has 239 points in total).
 // Lower the number to take that bend slower; the jump later needs about 220+ km/h, so don't go below ~85.
-const SLOW_ZONES = [[5, 17, 95]];
+const SLOW_ZONES = [[5, 17, 105]];
 const LINE_PULL = 0.03;     // extra steering back toward your recorded line (radians per metre off the line). 0 = off.
 const LOOK_BASE = 6;        // how far ahead (metres) the bot aims at low speed; smaller = turns in tighter
 const LOOK_SPEED = 0.09;    // extra look-ahead per km/h
