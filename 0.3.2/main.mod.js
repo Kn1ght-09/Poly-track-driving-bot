@@ -253,7 +253,7 @@ const WORKER_HELPERS = `
     const d=new DataView(e.buffer,e.byteOffset,e.byteLength);
     if(e.length<48) return null;
 
-    let o=0;
+    let o=4;
     const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
     o+=3;
 
@@ -357,7 +357,7 @@ const WORKER_HELPERS = `
     const target=lookAhead(state.position,ld,i);
 
     // The car's local forward axis is +Z.
-    const f=rotateVec(state.quaternion,{x:0,y:0,z:-1});
+    const f=rotateVec(state.quaternion,{x:0,y:0,z:1});
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
     const fl=Math.hypot(f.x,f.z)||1;
