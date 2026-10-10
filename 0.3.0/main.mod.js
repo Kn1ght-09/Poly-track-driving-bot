@@ -567,7 +567,7 @@ const BOT_BODY = `
 
       try {
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
-        if(globalThis.__ptDbgCount%2000===1 &&
+        if(globalThis.__ptDbgCount%120===1 &&
            globalThis.__ptDbgCount<400000) {
           console.log(
             "PTBOT_STATE",
