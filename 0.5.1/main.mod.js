@@ -842,7 +842,6 @@ const WORKER_HELPERS = `
     bot.lastPitch[id]=pitch;
     if(airborne && airFor>AIR_DELAY) {
       // no steering in the air; tilt to match the landing slope
-      right=false; left=false;
       if(AIRBRAKE) {
         const rate=(prevPitch===undefined) ? 0 : (pitch-prevPitch);   // per step
         const want=(AIR_MATCH_SLOPE ? groundPitch(i,speed) : 0)+AIR_BIAS+(LEARN ? (paramsAt(i).ab||0) : 0);
