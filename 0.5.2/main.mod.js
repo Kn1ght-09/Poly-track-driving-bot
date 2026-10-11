@@ -831,23 +831,24 @@ const WORKER_HELPERS = `
       if(bot.airSince[id]===undefined) { bot.airSince[id]=state.frames; bot.airV0[id]=speed; bot.airMatched[id]=false; }
     } else if(bot.airSince[id]!==undefined) {
       const t=state.frames-bot.airSince[id];
-      if(t>60) {
-        console.log("PTBOT_JUMP",console.log(
-  "PTBOT_JUMP",
-  "airtime=" + t,
-  "speed=" + Math.round(bot.airV0[id]) + "->" + Math.round(speed),
-  "idx=" + i + "/" + (N - 1),
-  "angle=" + angle.toFixed(2),
-  "steer=" + s.toFixed(2),
-  "left=" + left,
-  "right=" + right,
-  "up=" + up,
-  "down=" + down,
-  "off=" + err.toFixed(1),
-  "lat=" + lat.toFixed(1),
-  "landing tilt=" + (pitch * 57.3).toFixed(0),
-  "ground=" + (groundPitch(i, speed) * 57.3).toFixed(0)
-);
+      if(t>60) {if (t > 60) {
+  console.log(
+    "PTBOT_JUMP",
+    "airtime=" + t,
+    "speed=" + Math.round(bot.airV0[id]) + "->" + Math.round(speed),
+    "idx=" + i + "/" + (N - 1),
+    "angle=" + angle.toFixed(2),
+    "steer=" + s.toFixed(2),
+    "left=" + left,
+    "right=" + right,
+    "up=" + up,
+    "down=" + down,
+    "off=" + err.toFixed(1),
+    "lat=" + lat.toFixed(1),
+    "landing tilt=" + (pitch * 57.3).toFixed(0),
+    "ground=" + (groundPitch(i, speed) * 57.3).toFixed(0)
+  );
+}
       }
       bot.airSince[id]=undefined;
       bot.airMatched[id]=false;
