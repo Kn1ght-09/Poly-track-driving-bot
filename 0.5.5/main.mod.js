@@ -455,7 +455,19 @@ const WORKER_HELPERS = `
 
     // Never fail a run at a checkpoint if the bot is already ahead AND faster.
     // Still allow the faster stretch to be saved by the normal improvement logic below.
-    const aheadAndFaster = dt<=0 && dv>=0;
+    
+const aheadAndFaster = dt <= 0 && dv >= 0;
+
+console.log("PTBOT_RESTART_CHECK", {
+  checkpoint: name,
+  dt,
+  dv,
+  dEff,
+  aheadAndFaster,
+  worse,
+  shouldRestart: worse && !aheadAndFaster
+});
+
     const worse = !aheadAndFaster && (dEff>3 || dt>250);
     const info=(dt>0?"+":"")+(dt/1000).toFixed(3)+" s, "+(dv>0?"+":"")+Math.round(dv)+" km/h";
     console.log("PTBOT_CHECKPOINT_DIAG", {
@@ -1012,7 +1024,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="0.5.4";
+    this.modVersion="0.5.5";
     this.touchingPhysics=true;
   }
 
