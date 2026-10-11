@@ -459,11 +459,11 @@ const WORKER_HELPERS = `
     const worse = !aheadAndFaster && (dEff>3 || dt>250);
     const info=(dt>0?"+":"")+(dt/1000).toFixed(3)+" s, "+(dv>0?"+":"")+Math.round(dv)+" km/h";
 
-    if(worse) {
-      console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> not enough, restarting");
-      failRun("behind the ghost at "+name,state);
-      return;
-    }
+    if(worse && !aheadAndFaster) {
+  console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> not enough, restarting");
+  failRun("behind the ghost at "+name,state);
+  return;
+}
 
     if(dEff>=-3) {
       console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> "+(aheadAndFaster ? "ahead and faster; continuing" : "keeping up, carrying on"));
@@ -1000,7 +1000,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="0.5.3";
+    this.modVersion="0.5.4";
     this.touchingPhysics=true;
   }
 
