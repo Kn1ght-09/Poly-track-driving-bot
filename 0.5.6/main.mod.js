@@ -457,6 +457,7 @@ const WORKER_HELPERS = `
     // Still allow the faster stretch to be saved by the normal improvement logic below.
     
 
+
 const aheadAndFaster = dt <= 0 && dv >= 0;
 const worse = !aheadAndFaster && (dEff > 3 || dt > 250);
 
@@ -486,6 +487,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
   aheadAndFaster,
   worse
 });
+
 
     if(worse && !aheadAndFaster) {
   console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> not enough, restarting");
