@@ -17,8 +17,8 @@ const AIR_DELAY = 120;
 const AIR_MATCH_SLOPE = false;
 const AIR_BIAS = 0;
 const AIR_DOWN_IS_NOSE_UP = true;
-const AIR_LEAD = 80;
-const AIR_DEADBAND = 0.05;
+const AIR_LEAD = 40;
+const AIR_DEADBAND = 0.08;
 const AIR_LOOK_SEC = 0.36;
 
 const SPEED_VALUE = 0.8;
@@ -459,7 +459,7 @@ const WORKER_HELPERS = `
 
 
 const aheadAndFaster = dt <= 0 && dv >= -2;
-const worse = !aheadAndFaster && (dEff > 3 || dt > 250);
+const worse = !aheadAndFaster && (dEff > 100 || dt > 250);
 
 console.log("PTBOT_RESTART_CHECK", {
   checkpoint: name,
