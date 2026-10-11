@@ -456,7 +456,9 @@ const WORKER_HELPERS = `
     // Never fail a run at a checkpoint if the bot is already ahead AND faster.
     // Still allow the faster stretch to be saved by the normal improvement logic below.
     
+
 const aheadAndFaster = dt <= 0 && dv >= 0;
+const worse = !aheadAndFaster && (dEff > 3 || dt > 250);
 
 console.log("PTBOT_RESTART_CHECK", {
   checkpoint: name,
@@ -468,9 +470,11 @@ console.log("PTBOT_RESTART_CHECK", {
   shouldRestart: worse && !aheadAndFaster
 });
 
-    const worse = !aheadAndFaster && (dEff>3 || dt>250);
-    const info=(dt>0?"+":"")+(dt/1000).toFixed(3)+" s, "+(dv>0?"+":"")+Math.round(dv)+" km/h";
-    console.log("PTBOT_CHECKPOINT_DIAG", {
+const info = (dt > 0 ? "+" : "") +
+  (dt / 1000).toFixed(3) + " s, " +
+  (dv > 0 ? "+" : "") + Math.round(dv) + " km/h";
+
+console.log("PTBOT_CHECKPOINT_DIAG", {
   checkpoint: name,
   botFrames: frames,
   ghostFrames: B.gt[k],
