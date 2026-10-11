@@ -1,55 +1,49 @@
+
 import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
 
-// "drive"  = the bot drives the lap you recorded.
-// "record" = you drive by hand and the mod prints your lap to the Console.
+// "drive" = the bot drives the recorded lap.
+// "record" = you drive manually and the mod records the lap.
 const MODE = "drive";
 
 // ---- SELF-LEARNING ----
-// true  = the bot keeps trying slightly different lines and speeds, keeps what is faster, and restarts the level
-//         (with the T key) when a try is slower or crashes. false = plain driving, like version 0.3.11.
 const LEARN = true;
 
-// ---- RECON (research only) ----
-// true = also write down (in the Console, lines starting with PTBOT_RECON) how the game starts and talks to its
-// physics worker. This does not change how the bot drives. Set false when you no longer need it.
+// ---- RECON ----
 const RECON = true;
 
-// ---- AIRBRAKE (smooth landings) ----
-// In the air the bot uses the brake/forward keys to tilt the car so its wheels land flat on the slope it is about to hit.
+// ---- AIRBRAKE ----
 const AIRBRAKE = true;
-const AIR_DELAY = 120;            // only after this many frames in the air (ignores tiny bumps)
-const AIR_MATCH_SLOPE = false;    // false: level the car flat (parallel to the world's ground). true: match the slope of the recorded route instead.
-const AIR_BIAS = 0;               // radians; positive = land a bit more nose-up than the slope (try 0.05 to 0.15)
-const AIR_DOWN_IS_NOSE_UP = true; // true: brake tilts the car back (nose up). If the car tilts the wrong way in the air, set false.
-const AIR_LEAD = 80;              // looks this many frames ahead when judging the tilt
-const AIR_DEADBAND = 0.05;        // radians of tilt error to ignore
-const AIR_LOOK_SEC = 0.36;        // how far ahead (in seconds of travel) it looks for the slope it will land on
-const SPEED_VALUE = 0.8;    // how much extra km/h at a checkpoint counts as saved time (0 = ignore speed, 1 = full credit)
-const MAX_LINE_SHIFT = 6;   // the learned line may move at most this many metres sideways from your recorded line
-const MAX_SPEED_SHIFT = 0.2; // the learned speed may differ at most this much (0.2 = 20%) from your recorded speed at any point
-const EXPLORE_RUNS = 60;     // early runs make bigger changes; the size shrinks over about this many runs
-const AUTO_RESTART = true;  // let the mod press T for you. If it doesn't work in your game, set false and press T yourself.
-const AUTO_START = true;    // after a restart, the mod also taps forward to start the race
-const AUTO_START_MS = 100;  // how long the forward tap lasts (milliseconds). Keep it as short as works.
-const AUTO_START_DELAY = 700; // wait this long after pressing T before tapping forward (milliseconds)
+const AIR_DELAY = 120;
+const AIR_MATCH_SLOPE = false;
+const AIR_BIAS = 0;
+const AIR_DOWN_IS_NOSE_UP = true;
+const AIR_LEAD = 80;
+const AIR_DEADBAND = 0.05;
+const AIR_LOOK_SEC = 0.36;
+
+const SPEED_VALUE = 0.8;
+const MAX_LINE_SHIFT = 6;
+const MAX_SPEED_SHIFT = 0.2;
+const EXPLORE_RUNS = 60;
+const AUTO_RESTART = true;
+const AUTO_START = true;
+const AUTO_START_MS = 100;
+const AUTO_START_DELAY = 700;
 const RESTART_KEY = { key: "t", code: "KeyT", keyCode: 84 };
 
-// Tuning knobs for the bot:
-const SPEED_FACTOR = 1.0;   // 1.0 = your recorded speed; the big jump needs about that much speed
-const STEER_GAIN = 3.5;      // higher = sharper turns. If it wiggles on straights, lower it (try 2.5).
-const LAT_ACCEL = 40;       // how hard the bot allows itself to corner (your own lap reached 60 to 80). Lower = slows more for turns.
-// Extra speed limits for specific parts of the route: [from point, to point, max km/h].
-// Points 5 to 17 are the first bend of the "S" (the route has 239 points in total).
-// Lower the number to take that bend slower; the jump later needs about 220+ km/h, so don't go below ~85.
+// ---- DRIVING SETTINGS ----
+const SPEED_FACTOR = 1.0;
+const STEER_GAIN = 3.5;
+const LAT_ACCEL = 40;
 const SLOW_ZONES = [[5, 17, 95]];
-const LOW_SPEED_BOOST = 2;  // steers this much harder at low speed (3x at standstill, back to normal by 150 km/h). 0 = off.
-const LINE_PULL = 0.03;     // extra steering back toward your recorded line (radians per metre off the line). 0 = off.
-const LOOK_BASE = 6;        // how far ahead (metres) the bot aims at low speed; smaller = turns in tighter
-const LOOK_SPEED = 0.09;    // extra look-ahead per km/h
-const LOOK_MAX = 34;        // furthest it will look ahead
-const DECODE_OFFSET = 4;    // the game's data starts with a 4-byte header (confirmed from your console log)
-const STEER_SIGN = -1;      // flips left/right steering. -1 is correct for this game (confirmed from your report)
-const FORWARD_SIGN = 1;     // the car's front is +Z (confirmed from your console log)
+const LOW_SPEED_BOOST = 2;
+const LINE_PULL = 0.03;
+const LOOK_BASE = 6;
+const LOOK_SPEED = 0.09;
+const LOOK_MAX = 34;
+const DECODE_OFFSET = 4;
+const STEER_SIGN = -1;
+const FORWARD_SIGN = 1;
 
 // Your recorded lap: [x, height, z, speed in km/h]
 const ROUTE = [
@@ -182,7 +176,7 @@ const WORKER_HELPERS = `
   const MAX_SPEED_SHIFT = ${MAX_SPEED_SHIFT};
   const EXPLORE_RUNS = ${EXPLORE_RUNS};
   const SPEED_VALUE = ${SPEED_VALUE};
-  const AVG_MS = 55;   // typical speed in m/s, used to turn extra km/h into saved time
+  const AVG_MS = 55;
   const LOOK_SPEED = ${LOOK_SPEED};
   const LOOK_MAX = ${LOOK_MAX};
   const DECODE_OFFSET = ${DECODE_OFFSET};
@@ -203,6 +197,8 @@ const WORKER_HELPERS = `
     lastCp: Object.create(null),
     airSince: Object.create(null),
     airV0: Object.create(null),
+    lastAirborne: Object.create(null),
+    landSteerUntil: Object.create(null),
     lastPitch: Object.create(null),
     airMatched: Object.create(null),
     finLogged: Object.create(null),
@@ -228,19 +224,13 @@ const WORKER_HELPERS = `
 
     for(let i=lo;i<=hi;i++) {
       const d=dist2(p,ROUTE[i]);
-      if(d<bestD) {
-        bestD=d;
-        best=i;
-      }
+      if(d<bestD) { bestD=d; best=i; }
     }
 
     if(!forceGlobal && bestD>30*30) {
       for(let i=0;i<N;i++) {
         const d=dist2(p,ROUTE[i]);
-        if(d<bestD) {
-          bestD=d;
-          best=i;
-        }
+        if(d<bestD) { bestD=d; best=i; }
       }
     }
 
@@ -262,12 +252,10 @@ const WORKER_HELPERS = `
     for(let k=j;k<N;k++) {
       const bx=ROUTE[k][0], by=ROUTE[k][1], bz=ROUTE[k][2];
       const len=Math.hypot(bx-ax,bz-az);
-
       if(len>=remaining) {
         const f=remaining/Math.max(len,1e-9);
         return {x:ax+(bx-ax)*f,y:ay+(by-ay)*f,z:az+(bz-az)*f,index:k};
       }
-
       remaining-=len;
       ax=bx; ay=by; az=bz;
     }
@@ -278,24 +266,19 @@ const WORKER_HELPERS = `
 
   function crossTrack(p,i) {
     let best=Infinity;
-
     for(let k=Math.max(0,i-1);k<=Math.min(N-2,i);k++) {
       const ax=ROUTE[k][0], az=ROUTE[k][2];
       const bx=ROUTE[k+1][0], bz=ROUTE[k+1][2];
       const dx=bx-ax, dz=bz-az;
       const l2=dx*dx+dz*dz || 1e-9;
-
       let t=((p.x-ax)*dx+(p.z-az)*dz)/l2;
       t=Math.max(0,Math.min(1,t));
-
       const d=Math.hypot(p.x-(ax+dx*t),p.z-(az+dz*t));
       if(d<best) best=d;
     }
-
     return best===Infinity ? 0 : best;
   }
 
-  // Corner speed limit for each route point, from how sharply the route bends there.
   const CAP=[];
   for(let k=0;k<N;k++) {
     let kmax=0;
@@ -310,7 +293,6 @@ const WORKER_HELPERS = `
     CAP.push(kmax>1e-6 ? Math.sqrt(LAT_ACCEL/kmax)*3.6 : 1000);
   }
 
-  // Sideways distance from the recorded line, in metres. Positive = car is to the RIGHT of the line.
   function lateral(p,i) {
     const k=Math.max(0,Math.min(N-2,i));
     const ax=ROUTE[k][0], az=ROUTE[k][2], bx=ROUTE[k+1][0], bz=ROUTE[k+1][2];
@@ -324,14 +306,17 @@ const WORKER_HELPERS = `
 
   // ================= SELF-LEARNING =================
   const ch = (typeof BroadcastChannel !== "undefined") ? new BroadcastChannel("ptbot") : null;
-  const L = bot.learn = { best:{cp:[],seg:[],dur:[],vexit:[],gt:[],gv:[],offs:new Array(N).fill(0),spd:new Array(N).fill(0)}, cur:{seg:[],offs:new Array(N).fill(0),spd:new Array(N).fill(0)}, run:null, runNo:0, pending:false, pendingFrame:0 };
+  const L = bot.learn = {
+    best:{cp:[],seg:[],dur:[],vexit:[],gt:[],gv:[],offs:new Array(N).fill(0),spd:new Array(N).fill(0)},
+    cur:{seg:[],offs:new Array(N).fill(0),spd:new Array(N).fill(0)},
+    run:null,runNo:0,pending:false,pendingFrame:0
+  };
   const DEF = {sp:1, off:0, br:6, ab:0};
   function clampv(v,a,b) { return Math.max(a,Math.min(b,v)); }
   function rnd(a) { return (Math.random()*2-1)*a; }
   function post(m) { if(ch) { try { ch.postMessage(m); } catch(_) {} } }
   function saveBest() { post({type:"save", data:{n:N, best:L.best}}); }
 
-  // Which stretch of the track (between checkpoints) a route point belongs to.
   function segOf(i) {
     const cp=L.best.cp;
     let s=0;
@@ -340,22 +325,22 @@ const WORKER_HELPERS = `
     }
     return s;
   }
+
   function paramsAt(i) {
     if(!LEARN) return DEF;
     return L.cur.seg[segOf(i)] || DEF;
   }
 
-  // Sideways shift (metres, + = right) of the learned line at a route point.
   function offAt(k) {
     if(!LEARN) return 0;
     return L.cur.offs[Math.max(0,Math.min(N-1,k))] || 0;
   }
-  // Speed adjustment (fraction, + = faster) of the learned speed profile at a route point.
+
   function spdAt(k) {
     if(!LEARN) return 0;
     return L.cur.spd[Math.max(0,Math.min(N-1,k))] || 0;
   }
-  // Route points belonging to stretch s: [lo, hi)
+
   function rangeOf(s) {
     const cp=L.best.cp;
     const lo=s>0 && cp[s-1] ? cp[s-1].idx : 0;
@@ -369,6 +354,7 @@ const WORKER_HELPERS = `
     console.log("PTBOT_LEARN restart ("+why+")");
     post({type:"restart", delay:delay});
   }
+
   function failRun(why,state) {
     if(!LEARN || L.pending) return;
     if(L.run) L.run.failed=true;
@@ -385,14 +371,13 @@ const WORKER_HELPERS = `
       const p=B.seg[s] || DEF;
       seg.push({sp:p.sp, off:0, br:p.br, ab:p.ab||0});
     }
-    // Only stretches that have been driven before can be compared with the ghost.
     const maxS=Math.min(B.gt.length,seg.length);
     const offs=B.offs.slice();
     const spd=B.spd.slice();
     const mutated=[];
     const desc=[];
-    // Early on, bigger changes; later, smaller ones.
     const scale=0.5+1.0*Math.exp(-L.runNo/EXPLORE_RUNS);
+
     function bump(arr,r,amp,lim) {
       const span=r[1]-r[0];
       const c=r[0]+Math.random()*span;
@@ -403,14 +388,17 @@ const WORKER_HELPERS = `
       }
       return Math.round(c);
     }
+
     if(LEARN && maxS>0) {
       for(let s=0;s<maxS;s++) { if(Math.random()<0.4) mutated.push(s); }
       if(!mutated.length) mutated.push(Math.floor(Math.random()*maxS));
+
       for(const s of mutated) {
         const g=seg[s];
         const r=rangeOf(s);
         const ok=(r[1]-r[0])>=8;
         const n=Math.random()<0.3 ? 2 : 1;
+
         for(let t=0;t<n;t++) {
           const w=Math.random();
           if(w<0.40 && ok) {
@@ -422,79 +410,88 @@ const WORKER_HELPERS = `
             const c=bump(spd,r,amp,MAX_SPEED_SHIFT);
             desc.push("speed "+(amp>0?"+":"")+(amp*100).toFixed(0)+"% near point "+c);
           } else if(w<0.74) {
-            g.sp=clampv(g.sp+rnd(0.03*scale),0.8,1.12); desc.push("speed x"+g.sp.toFixed(2)+" in stretch "+(s+1));
+            g.sp=clampv(g.sp+rnd(0.03*scale),0.8,1.12);
+            desc.push("speed x"+g.sp.toFixed(2)+" in stretch "+(s+1));
           } else if(w<0.84) {
-            g.br=clampv(g.br+rnd(1*scale),3,10); desc.push("braking "+g.br.toFixed(1)+" in stretch "+(s+1));
+            g.br=clampv(g.br+rnd(1*scale),3,10);
+            desc.push("braking "+g.br.toFixed(1)+" in stretch "+(s+1));
           } else if(AIRBRAKE) {
-            g.ab=clampv((g.ab||0)+rnd(0.06),-0.35,0.35); desc.push("landing tilt "+g.ab.toFixed(2)+" rad in stretch "+(s+1));
+            g.ab=clampv((g.ab||0)+rnd(0.06),-0.35,0.35);
+            desc.push("landing tilt "+g.ab.toFixed(2)+" rad in stretch "+(s+1));
           }
         }
       }
     }
-    L.cur={seg:seg, offs:offs, spd:spd};
-    L.run={n:L.runNo, cps:[], mut:mutated, failed:false};
+
+    L.cur={seg:seg,offs:offs,spd:spd};
+    L.run={n:L.runNo,cps:[],mut:mutated,failed:false};
     console.log("PTBOT_LEARN run "+L.runNo+": "+B.gt.length+" checkpoints in the ghost, trying: "+(desc.length ? desc.join("; ") : "nothing (measuring baseline)"));
   }
 
-  // Called when the car passes a checkpoint (or finishes).
-  // The car is compared with its GHOST (the best run so far) at the same checkpoint:
-  //   behind the ghost only counts against it if the extra speed does not make up for it.
-  //   Ahead of the ghost, or catching up with more speed: keep going. Otherwise: restart.
   function onCheckpoint(frames,speed,idx,isFinish,state) {
     if(!LEARN || !L.run || L.run.failed || L.pending) return;
+
     const R=L.run, B=L.best, k=R.cps.length;
     const prevFrames=k>0 ? R.cps[k-1].frames : 0;
     const dur=frames-prevFrames;
-    R.cps.push({frames:frames, speed:speed, idx:idx});
+    R.cps.push({frames:frames,speed:speed,idx:idx});
     const name=isFinish ? "finish" : "checkpoint "+(k+1);
 
     if(k>=B.gt.length) {
-      // First time here: this run becomes the ghost for this checkpoint.
       B.cp[k]={idx:idx};
       B.gt[k]=frames; B.gv[k]=speed;
-      B.dur[k]=dur;   B.vexit[k]=speed;
+      B.dur[k]=dur; B.vexit[k]=speed;
       console.log("PTBOT_LEARN ghost set at "+name+": "+(frames/1000).toFixed(2)+" s, "+Math.round(speed)+" km/h");
       saveBest();
       return;
     }
 
-    // ---- compare with the ghost (whole time since the start) ----
-    const dt=frames-B.gt[k];          // + = behind the ghost
-    const dv=speed-B.gv[k];           // + = faster than the ghost
+    const dt=frames-B.gt[k];
+    const dv=speed-B.gv[k];
     const last=B.gt.length-1;
     const remFrames=Math.max(0,B.gt[last]-B.gt[k]);
     const credit=SPEED_VALUE*clampv(dv,-20,20)/3.6*remFrames/AVG_MS;
-    const dEff=dt-credit;             // time difference once the speed advantage is counted
-    const worse = dEff>3 || dt>250;
+    const dEff=dt-credit;
+
+    // Never fail a run at a checkpoint if the bot is already ahead AND faster.
+    // Still allow the faster stretch to be saved by the normal improvement logic below.
+    const aheadAndFaster = dt<=0 && dv>=0;
+    const worse = !aheadAndFaster && (dEff>3 || dt>250);
     const info=(dt>0?"+":"")+(dt/1000).toFixed(3)+" s, "+(dv>0?"+":"")+Math.round(dv)+" km/h";
+
     if(worse) {
       console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> not enough, restarting");
-      failRun("behind the ghost at "+name, state);
-      return;
-    }
-    if(dEff>=-3) {
-      console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> keeping up, carrying on");
+      failRun("behind the ghost at "+name,state);
       return;
     }
 
-    // ---- ahead of the ghost. Keep this stretch's changes only if the stretch itself got better ----
+    if(dEff>=-3) {
+      console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> "+(aheadAndFaster ? "ahead and faster; continuing" : "keeping up, carrying on"));
+      return;
+    }
+
     const sdt=dur-B.dur[k];
     const sdv=speed-B.vexit[k];
     const screds=SPEED_VALUE*clampv(sdv,-20,20)/3.6*remFrames/AVG_MS;
     const stretchBetter=(sdt-screds)<-3;
+
     if(stretchBetter) {
       const c=L.cur.seg[k] || DEF;
-      B.seg[k]={sp:c.sp, off:0, br:c.br, ab:c.ab||0};
+      B.seg[k]={sp:c.sp,off:0,br:c.br,ab:c.ab||0};
       const rg=rangeOf(k);
-      for(let j=rg[0];j<rg[1];j++) { B.offs[j]=Math.round(L.cur.offs[j]*1000)/1000; B.spd[j]=Math.round(L.cur.spd[j]*1000)/1000; }
-      B.dur[k]=dur; B.vexit[k]=speed;
+      for(let j=rg[0];j<rg[1];j++) {
+        B.offs[j]=Math.round(L.cur.offs[j]*1000)/1000;
+        B.spd[j]=Math.round(L.cur.spd[j]*1000)/1000;
+      }
+      B.dur[k]=dur;
+      B.vexit[k]=speed;
       const gain=Math.max(0,B.gt[k]-frames);
-      B.gt[k]=frames; B.gv[k]=speed;
-      // the rest of the ghost is now that much faster too (the best-known start + the old rest)
+      B.gt[k]=frames;
+      B.gv[k]=speed;
       for(let j=k+1;j<B.gt.length;j++) B.gt[j]=Math.max(0,B.gt[j]-gain);
       console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> AHEAD, changes kept, carrying on");
       saveBest();
-      console.log("PTBOT_LEARN_STATE", JSON.stringify(B));
+      console.log("PTBOT_LEARN_STATE",JSON.stringify(B));
     } else {
       console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> ahead, carrying on (this stretch itself was not better, so its changes are not kept)");
     }
@@ -503,7 +500,10 @@ const WORKER_HELPERS = `
   if(ch) {
     ch.onmessage=(ev) => {
       const m=ev.data || {};
-      if(m.type==="load" && m.data && m.data.n===N && m.data.best && Array.isArray(m.data.best.gt) && Array.isArray(m.data.best.spd) && Array.isArray(m.data.best.offs) && m.data.best.offs.length===N && m.data.best.spd.length===N && L.best.cp.length===0 && L.runNo<=1) {
+      if(m.type==="load" && m.data && m.data.n===N && m.data.best &&
+         Array.isArray(m.data.best.gt) && Array.isArray(m.data.best.spd) &&
+         Array.isArray(m.data.best.offs) && m.data.best.offs.length===N &&
+         m.data.best.spd.length===N && L.best.cp.length===0 && L.runNo<=1) {
         L.best=m.data.best;
         console.log("PTBOT_LEARN loaded saved progress: "+L.best.gt.length+" checkpoints in the ghost");
         L.runNo=0;
@@ -512,13 +512,12 @@ const WORKER_HELPERS = `
     };
     post({type:"hello"});
   }
-  if(LEARN) startRun();
-  // =================================================
 
-  // Slope of the ground (radians, negative = downhill) a short way ahead, taken from the recorded route.
+  if(LEARN) startRun();
+
   function groundPitch(i,speedKmh) {
     const D=Math.max(8,speedKmh/3.6*AIR_LOOK_SEC);
-    let acc=0, j=i;
+    let acc=0,j=i;
     while(j<N-1 && acc<D) {
       acc+=Math.hypot(ROUTE[j+1][0]-ROUTE[j][0],ROUTE[j+1][2]-ROUTE[j][2]);
       j++;
@@ -540,7 +539,6 @@ const WORKER_HELPERS = `
       const v=Math.min(ROUTE[j][3]*SPEED_FACTOR*Pj.sp*(1+spdAt(j)),CAP[j],zc)+Pi.br*(j-i);
       if(v<best) best=v;
     }
-
     return Math.max(best,25);
   }
 
@@ -550,7 +548,6 @@ const WORKER_HELPERS = `
     const iy=qw*v.y+qz*v.x-qx*v.z;
     const iz=qw*v.z+qx*v.y-qy*v.x;
     const iw=-qx*v.x-qy*v.y-qz*v.z;
-
     return {
       x:ix*qw+iw*-qx+iy*-qz-iz*-qy,
       y:iy*qw+iw*-qy+iz*-qx-ix*-qz,
@@ -562,64 +559,39 @@ const WORKER_HELPERS = `
     const e=new Uint8Array(buf);
     const d=new DataView(e.buffer,e.byteOffset,e.byteLength);
     if(e.length<48) return null;
-
     let o=DECODE_OFFSET;
     const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
     o+=3;
-
     const speed=d.getFloat32(o,true);
     o+=4;
     const flags=e[o++];
-
     let finish=null;
     if(flags&2) {
       finish=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
       o+=3;
     }
-
     const checkpoint=d.getUint16(o,true);
     o+=2;
-
-    const position={
-      x:d.getFloat32(o,true),
-      y:d.getFloat32(o+4,true),
-      z:d.getFloat32(o+8,true)
-    };
+    const position={x:d.getFloat32(o,true),y:d.getFloat32(o+4,true),z:d.getFloat32(o+8,true)};
     o+=12;
-
     const quaternion={
-      x:d.getFloat32(o,true),
-      y:d.getFloat32(o+4,true),
-      z:d.getFloat32(o+8,true),
-      w:d.getFloat32(o+12,true)
+      x:d.getFloat32(o,true),y:d.getFloat32(o+4,true),
+      z:d.getFloat32(o+8,true),w:d.getFloat32(o+12,true)
     };
 
-    if(![
-      speed,position.x,position.y,position.z,
-      quaternion.x,quaternion.y,quaternion.z,quaternion.w
-    ].every(Number.isFinite) ||
-       Math.abs(speed)>1000 ||
-       Math.abs(position.x)>100000 ||
-       Math.abs(position.y)>100000 ||
-       Math.abs(position.z)>100000) return null;
+    if(![speed,position.x,position.y,position.z,quaternion.x,quaternion.y,quaternion.z,quaternion.w].every(Number.isFinite) ||
+       Math.abs(speed)>1000 || Math.abs(position.x)>100000 ||
+       Math.abs(position.y)>100000 || Math.abs(position.z)>100000) return null;
 
     return {
-      frames,
-      speedKmh:speed,
-      hasStarted:!!(flags&1),
-      wheels:(flags>>3)&15,
-      finishFrames:finish,
-      nextCheckpointIndex:checkpoint,
-      hasCheckpointToRespawnAt:!!(flags&4),
-      position,
-      quaternion
+      frames,speedKmh:speed,hasStarted:!!(flags&1),wheels:(flags>>3)&15,
+      finishFrames:finish,nextCheckpointIndex:checkpoint,
+      hasCheckpointToRespawnAt:!!(flags&4),position,quaternion
     };
   }
 
   function choose(state,id) {
-    if(!state) {
-      return {up:true,right:false,down:false,left:false,reset:false};
-    }
+    if(!state) return {up:true,right:false,down:false,left:false,reset:false};
 
     const lf=bot.lastFrames[id];
     if(lf===undefined || state.frames<lf) {
@@ -632,6 +604,12 @@ const WORKER_HELPERS = `
       bot.lastOff[id]=-100000;
       bot.finLogged[id]=false;
       bot.lastCp[id]=undefined;
+      bot.lastAirborne[id]=false;
+      bot.landSteerUntil[id]=0;
+      bot.airSince[id]=undefined;
+      bot.airV0[id]=undefined;
+      bot.lastPitch[id]=undefined;
+      bot.airMatched[id]=false;
       if(LEARN && lf!==undefined) startRun();
     }
     bot.lastFrames[id]=state.frames;
@@ -639,12 +617,10 @@ const WORKER_HELPERS = `
     if(LEARN && L.pending && state.frames-L.pendingFrame>6000) {
       L.pendingFrame=state.frames;
       console.log("PTBOT_LEARN still waiting for a restart - sending it again (press T yourself if nothing happens)");
-      post({type:"restart", delay:0});
+      post({type:"restart",delay:0});
     }
 
-    if(!state.hasStarted) {
-      return {up:true,right:false,down:false,left:false,reset:false};
-    }
+    if(!state.hasStarted) return {up:true,right:false,down:false,left:false,reset:false};
 
     if(state.finishFrames!==null) {
       if(!bot.finLogged[id]) {
@@ -660,12 +636,10 @@ const WORKER_HELPERS = `
 
     const previousPos=bot.lastPos[id];
     let respawned=false;
-
     if(previousPos) {
       const dx=state.position.x-previousPos.x;
       const dy=state.position.y-previousPos.y;
       const dz=state.position.z-previousPos.z;
-
       if(Math.hypot(dx,dy,dz)>5) {
         respawned=true;
         failRun("sudden position jump (respawn)",state);
@@ -678,206 +652,170 @@ const WORKER_HELPERS = `
 
     const speed=Math.abs(state.speedKmh);
     const i=nearestIndex(state.position,id,respawned);
+
     if(LEARN) {
       const lc=bot.lastCp[id];
       if(lc!==undefined && state.nextCheckpointIndex>lc) onCheckpoint(state.frames,speed,i,false,state);
       bot.lastCp[id]=state.nextCheckpointIndex;
     }
-    const ld=Math.max(LOOK_BASE,Math.min(LOOK_MAX,LOOK_BASE+speed*LOOK_SPEED));
+
+    let ld=Math.max(LOOK_BASE,Math.min(LOOK_MAX,LOOK_BASE+speed*LOOK_SPEED));
     let target=lookAhead(state.position,ld,i);
     if(LEARN) {
       const toff=offAt(target.index);
       if(toff) {
         const k=Math.max(1,Math.min(N-1,target.index));
-        const ddx=ROUTE[k][0]-ROUTE[k-1][0], ddz=ROUTE[k][2]-ROUTE[k-1][2];
+        const ddx=ROUTE[k][0]-ROUTE[k-1][0],ddz=ROUTE[k][2]-ROUTE[k-1][2];
         const ll=Math.hypot(ddx,ddz)||1;
-        target={x:target.x+toff*(-ddz/ll), y:target.y, z:target.z+toff*(ddx/ll), index:target.index};
+        target={x:target.x+toff*(-ddz/ll),y:target.y,z:target.z+toff*(ddx/ll),index:target.index};
       }
     }
 
-    // The car's local forward axis is +Z. (In this game's coordinates a positive angle means the target is on the LEFT.)
     const f=rotateVec(state.quaternion,{x:0,y:0,z:FORWARD_SIGN});
     const dx=target.x-state.position.x;
     const dz=target.z-state.position.z;
     const fl=Math.hypot(f.x,f.z)||1;
     const tl=Math.hypot(dx,dz)||1;
-    const fx=f.x/fl, fz=f.z/fl;
-    const tx=dx/tl, tz=dz/tl;
-
+    const fx=f.x/fl,fz=f.z/fl,tx=dx/tl,tz=dz/tl;
     const cross=fz*tx-fx*tz;
     const dot=Math.max(-1,Math.min(1,fx*tx+fz*tz));
     const angle=Math.atan2(cross,dot);
     const abs=Math.abs(angle);
 
     const tSpeed=targetSpeed(i);
-    let up=true;
-    let down=false;
-
-    if(speed>tSpeed+8 && speed>40) {
-      up=false;
-      down=true;
-    } else if(speed>tSpeed) {
-      up=false;
-    }
-
+    let up=true,down=false;
+    if(speed>tSpeed+8 && speed>40) { up=false;down=true; }
+    else if(speed>tSpeed) up=false;
     if(abs>1.0 && speed>60) up=false;
 
     const lat=lateral(state.position,i)-(LEARN ? offAt(i) : 0);
-    const s=Math.max(-1,Math.min(1,(angle+LINE_PULL*Math.max(-8,Math.min(8,lat)))*STEER_GAIN*(1+LOW_SPEED_BOOST*Math.max(0,1-speed/150))*STEER_SIGN));
-    let e=(bot.acc[id] ?? 0)+s;
-    let right=false;
-    let left=false;
 
-    if(e>=1) {
-      right=true;
-      e-=1;
-    } else if(e<=-1) {
-      left=true;
-      e+=1;
-    }
+    // Detect landing, then briefly soften heading correction to reduce sharp swerves.
+    const airborneNow=state.wheels===0;
+    const wasAirborne=bot.lastAirborne[id]===true;
+    if(wasAirborne && !airborneNow) bot.landSteerUntil[id]=state.frames+18;
+    bot.lastAirborne[id]=airborneNow;
+
+    const landing=state.frames<(bot.landSteerUntil[id]||0);
+    const headingScale=landing ? 0.65 : 1;
+    const steerAngle=angle*headingScale+
+      LINE_PULL*Math.max(-8,Math.min(8,lat));
+
+    const s=Math.max(-1,Math.min(1,
+      steerAngle*STEER_GAIN*
+      (1+LOW_SPEED_BOOST*Math.max(0,1-speed/150))*STEER_SIGN
+    ));
+
+    let e=(bot.acc[id]??0)+s;
+    let right=false,left=false;
+    if(e>=1) { right=true;e-=1; }
+    else if(e<=-1) { left=true;e+=1; }
     bot.acc[id]=e;
 
     let reset=false;
     const lp=bot.lastPos[id];
-
     if(lp) {
       const mdx=state.position.x-lp.x;
       const mdy=state.position.y-lp.y;
       const mdz=state.position.z-lp.z;
       const moved=Math.sqrt(mdx*mdx+mdy*mdy+mdz*mdz);
-
-      if(moved<0.18 && speed<5) {
-        bot.stuck[id]=(bot.stuck[id] ?? 0)+1;
-      } else {
-        bot.stuck[id]=0;
-      }
+      if(moved<0.18 && speed<5) bot.stuck[id]=(bot.stuck[id]??0)+1;
+      else bot.stuck[id]=0;
     }
 
-    if((bot.stuck[id] ?? 0)>1500) {
+    if((bot.stuck[id]??0)>1500) {
       bot.stuck[id]=0;
       if(LEARN) failRun("stuck",state);
       else reset=true;
     }
 
-    bot.lastPos[id]={
-      x:state.position.x,
-      y:state.position.y,
-      z:state.position.z
-    };
+    bot.lastPos[id]={x:state.position.x,y:state.position.y,z:state.position.z};
 
     const err=crossTrack(state.position,i);
     let hist=bot.hist[id];
-
-    if(!hist) {
-      hist=[];
-      bot.hist[id]=hist;
-    }
-
-    if(state.frames%10===0 &&
-       (hist.length===0 || hist[hist.length-1][0]!==state.frames)) {
+    if(!hist) { hist=[];bot.hist[id]=hist; }
+    if(state.frames%10===0 && (hist.length===0 || hist[hist.length-1][0]!==state.frames)) {
       hist.push([state.frames,speed]);
       if(hist.length>14) hist.shift();
     }
 
     let vmax=0;
-    for(const h of hist) {
-      if(h[0]>=state.frames-120 && h[1]>vmax) vmax=h[1];
-    }
+    for(const h of hist) if(h[0]>=state.frames-120 && h[1]>vmax) vmax=h[1];
 
-    if(vmax-speed>45 &&
-       state.frames-(bot.lastCrash[id] ?? -100000)>2000) {
+    if(vmax-speed>45 && state.frames-(bot.lastCrash[id]??-100000)>2000) {
       bot.lastCrash[id]=state.frames;
       if(vmax-speed>80) failRun("crash (big speed drop)",state);
-      console.log(
-        "PTBOT_CRASH",
-        "frame="+state.frames,
-        "idx="+i+"/"+(N-1),
+      console.log("PTBOT_CRASH","frame="+state.frames,"idx="+i+"/"+(N-1),
         "pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0),
         "speed="+Math.round(vmax)+"->"+Math.round(speed),
-        "offLine="+err.toFixed(1)+"m",
-        "want="+Math.round(tSpeed),
-        "ang="+angle.toFixed(2)
-      );
+        "offLine="+err.toFixed(1)+"m","want="+Math.round(tSpeed),"ang="+angle.toFixed(2));
     }
 
     if(LEARN && err>MAX_LINE_SHIFT+8) failRun("far off the line ("+err.toFixed(0)+" m)",state);
-    if(err>5 && state.frames-(bot.lastOff[id] ?? -100000)>150) {
+    if(err>5 && state.frames-(bot.lastOff[id]??-100000)>150) {
       bot.lastOff[id]=state.frames;
-      console.log("PTBOT_OFF","frame="+state.frames,"idx="+i+"/"+(N-1),"side="+(lat>0?"right":"left"),"off="+err.toFixed(1)+"m","speed="+Math.round(speed),"pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0));
-    }
-    if(reset) {
-      console.log(
-        "PTBOT_RESET",
-        "frame="+state.frames,
-        "idx="+i+"/"+(N-1),
-        "pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0)
-      );
+      console.log("PTBOT_OFF","frame="+state.frames,"idx="+i+"/"+(N-1),
+        "side="+(lat>0?"right":"left"),"off="+err.toFixed(1)+"m",
+        "speed="+Math.round(speed),"pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0));
     }
 
-    bot.dbg={
-      i,
-      v:Math.round(speed),
-      want:Math.round(tSpeed),
-      ang:+angle.toFixed(2),
-      steer:+s.toFixed(2),
-      off:+err.toFixed(1),
-      lat:+lat.toFixed(1)
-    };
+    if(reset) console.log("PTBOT_RESET","frame="+state.frames,"idx="+i+"/"+(N-1),
+      "pos="+state.position.x.toFixed(0)+","+state.position.z.toFixed(0));
 
-    // ---- airborne handling ----
+    bot.dbg={i,v:Math.round(speed),want:Math.round(tSpeed),ang:+angle.toFixed(2),
+      steer:+s.toFixed(2),off:+err.toFixed(1),lat:+lat.toFixed(1)};
+
+    // ---- AIRBORNE HANDLING ----
     const airborne=(state.wheels===0);
     const pitch=Math.asin(Math.max(-1,Math.min(1,f.y)));
+
     if(airborne) {
-      if(bot.airSince[id]===undefined) { bot.airSince[id]=state.frames; bot.airV0[id]=speed; bot.airMatched[id]=false; }
+      if(bot.airSince[id]===undefined) {
+        bot.airSince[id]=state.frames;
+        bot.airV0[id]=speed;
+        bot.airMatched[id]=false;
+      }
     } else if(bot.airSince[id]!==undefined) {
       const t=state.frames-bot.airSince[id];
-      if(t>60) {if (t > 60) {
-  console.log(
-    "PTBOT_JUMP",
-    "airtime=" + t,
-    "speed=" + Math.round(bot.airV0[id]) + "->" + Math.round(speed),
-    "idx=" + i + "/" + (N - 1),
-    "angle=" + angle.toFixed(2),
-    "steer=" + s.toFixed(2),
-    "left=" + left,
-    "right=" + right,
-    "up=" + up,
-    "down=" + down,
-    "off=" + err.toFixed(1),
-    "lat=" + lat.toFixed(1),
-    "landing tilt=" + (pitch * 57.3).toFixed(0),
-    "ground=" + (groundPitch(i, speed) * 57.3).toFixed(0)
-  );
-}
+      if(t>60) {
+        console.log("PTBOT_JUMP","airtime="+t,
+          "speed="+Math.round(bot.airV0[id])+"->"+Math.round(speed),
+          "idx="+i+"/"+(N-1),"angle="+angle.toFixed(2),"steer="+s.toFixed(2),
+          "left="+left,"right="+right,"up="+up,"down="+down,
+          "off="+err.toFixed(1),"lat="+lat.toFixed(1),
+          "landing tilt="+(pitch*57.3).toFixed(0),
+          "ground="+(groundPitch(i,speed)*57.3).toFixed(0));
       }
       bot.airSince[id]=undefined;
       bot.airMatched[id]=false;
     }
+
     const airFor=airborne ? state.frames-bot.airSince[id] : 0;
     const prevPitch=bot.lastPitch[id];
     bot.lastPitch[id]=pitch;
-    if(airborne && airFor>AIR_DELAY) {
-      // no steering in the air; tilt to match the landing slope
-      if(AIRBRAKE) {
-        const rate=(prevPitch===undefined) ? 0 : (pitch-prevPitch);   // per step
-        const want=(AIR_MATCH_SLOPE ? groundPitch(i,speed) : 0)+AIR_BIAS+(LEARN ? (paramsAt(i).ab||0) : 0);
-        const predicted=pitch+rate*AIR_LEAD;
-        const e=want-predicted;     // positive = nose needs to come up
-        up=false; down=false;
-        const err2=want-pitch;      // actual tilt error right now
-        // Once the car is level with the slope, stop. Only start again if it drifts clearly away.
-        if(bot.airMatched[id]) {
-          if(Math.abs(err2)>AIR_DEADBAND*3) bot.airMatched[id]=false;
-        } else if(Math.abs(err2)<AIR_DEADBAND) {
-          bot.airMatched[id]=true;
-        }
-        if(!bot.airMatched[id]) {
-          // never push the nose further once the actual tilt has reached the wanted tilt
-          if(e>AIR_DEADBAND && err2>0.02) { if(AIR_DOWN_IS_NOSE_UP) down=true; else up=true; }
-          else if(e<-AIR_DEADBAND && err2<-0.02) { if(AIR_DOWN_IS_NOSE_UP) up=true; else down=true; }
-        }
-        bot.dbg.air={t:airFor,pitch:+pitch.toFixed(2),want:+want.toFixed(2),level:!!bot.airMatched[id]};
+
+    if(airborne && airFor>AIR_DELAY && AIRBRAKE) {
+      const rate=(prevPitch===undefined)?0:(pitch-prevPitch);
+      const want=(AIR_MATCH_SLOPE?groundPitch(i,speed):0)+AIR_BIAS+(LEARN?(paramsAt(i).ab||0):0);
+      const predicted=pitch+rate*AIR_LEAD;
+      const eAir=want-predicted;
+      up=false;down=false;
+      const err2=want-pitch;
+
+      if(bot.airMatched[id]) {
+        if(Math.abs(err2)>AIR_DEADBAND*3) bot.airMatched[id]=false;
+      } else if(Math.abs(err2)<AIR_DEADBAND) {
+        bot.airMatched[id]=true;
       }
+
+      if(!bot.airMatched[id]) {
+        if(eAir>AIR_DEADBAND && err2>0.02) {
+          if(AIR_DOWN_IS_NOSE_UP) down=true; else up=true;
+        } else if(eAir<-AIR_DEADBAND && err2<-0.02) {
+          if(AIR_DOWN_IS_NOSE_UP) up=true; else down=true;
+        }
+      }
+      bot.dbg.air={t:airFor,pitch:+pitch.toFixed(2),want:+want.toFixed(2),level:!!bot.airMatched[id]};
     }
 
     return {up,right,down,left,reset};
@@ -885,7 +823,6 @@ const WORKER_HELPERS = `
 
   function record(state,id) {
     if(!state) return;
-
     if(bot.recLastFrames!==undefined && state.frames<bot.recLastFrames) {
       bot.recRun++;
       bot.recChunk=[];
@@ -895,25 +832,11 @@ const WORKER_HELPERS = `
       console.log("PTBOT_LAP_NEW_RUN",bot.recRun);
     }
     bot.recLastFrames=state.frames;
-
     if(bot.recDone) return;
 
     if(state.finishFrames!==null) {
-      if(bot.recChunk.length>0) {
-        console.log(
-          "PTBOT_LAP",
-          "run="+bot.recRun,
-          "chunk="+bot.recChunkIndex,
-          JSON.stringify(bot.recChunk)
-        );
-      }
-
-      console.log(
-        "PTBOT_LAP_DONE",
-        "run="+bot.recRun,
-        "finishFrames="+state.finishFrames
-      );
-
+      if(bot.recChunk.length>0) console.log("PTBOT_LAP","run="+bot.recRun,"chunk="+bot.recChunkIndex,JSON.stringify(bot.recChunk));
+      console.log("PTBOT_LAP_DONE","run="+bot.recRun,"finishFrames="+state.finishFrames);
       bot.recChunk=[];
       bot.recDone=true;
       return;
@@ -922,21 +845,11 @@ const WORKER_HELPERS = `
     if(!state.hasStarted) return;
     if(state.frames%100!==0 || state.frames===bot.recLastSample) return;
     bot.recLastSample=state.frames;
-
-    bot.recChunk.push([
-      +state.position.x.toFixed(1),
-      +state.position.y.toFixed(1),
-      +state.position.z.toFixed(1),
-      Math.round(state.speedKmh)
-    ]);
+    bot.recChunk.push([+state.position.x.toFixed(1),+state.position.y.toFixed(1),
+      +state.position.z.toFixed(1),Math.round(state.speedKmh)]);
 
     if(bot.recChunk.length>=100) {
-      console.log(
-        "PTBOT_LAP",
-        "run="+bot.recRun,
-        "chunk="+bot.recChunkIndex,
-        JSON.stringify(bot.recChunk)
-      );
+      console.log("PTBOT_LAP","run="+bot.recRun,"chunk="+bot.recChunkIndex,JSON.stringify(bot.recChunk));
       bot.recChunkIndex++;
       bot.recChunk=[];
     }
@@ -954,7 +867,6 @@ const BOT_BODY = `
   if (e.userControls && globalThis.__ptTutorialBot) {
     const __ptBot = globalThis.__ptTutorialBot;
     let previous = null;
-
     try {
       const previousBuffer = new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
       previous = __ptBot.decode(previousBuffer.buffer);
@@ -963,141 +875,121 @@ const BOT_BODY = `
     if (__ptBot.mode === "record") {
       try { __ptBot.record(previous,e.id); } catch (_) {}
     } else if (__ptBot.enabled) {
-      if(previous) {
-        r=__ptBot.choose(previous,e.id);
-      } else {
-        r={up:true,right:false,down:false,left:false,reset:false};
-      }
+      if(previous) r=__ptBot.choose(previous,e.id);
+      else r={up:true,right:false,down:false,left:false,reset:false};
 
       try {
         globalThis.__ptDbgCount=(globalThis.__ptDbgCount||0)+1;
-        if(globalThis.__ptDbgCount%120===1 &&
-           globalThis.__ptDbgCount<500) {
-          console.log(
-  "PTBOT_STATE",
-  globalThis.__ptDbgCount,
-  "raw:",
-  JSON.stringify(
-    Array.from(new Uint8Array(t.HEAPU8.buffer, i, 48))
-  ),
-  "state:",
-  previous
-    ? JSON.stringify({
-        frames: previous.frames,
-        speed: previous.speedKmh,
-        pos: previous.position,
-        q: previous.quaternion
-      })
-    : "decode returned null",
-  "controls:",
-  JSON.stringify(r),
-  "dbg:",
-  JSON.stringify(__ptBot.dbg)
-);
+        if(globalThis.__ptDbgCount%120===1 && globalThis.__ptDbgCount<500) {
+          console.log("PTBOT_STATE",globalThis.__ptDbgCount,"raw:",
+            JSON.stringify(Array.from(new Uint8Array(t.HEAPU8.buffer,i,48))),
+            "state:",previous?JSON.stringify({
+              frames:previous.frames,speed:previous.speedKmh,pos:previous.position,q:previous.quaternion
+            }):"decode returned null",
+            "controls:",JSON.stringify(r),"dbg:",JSON.stringify(__ptBot.dbg));
         }
       } catch (_) {}
     }
   }
 `;
 
-// Runs in the normal page (not the physics worker): saves what the bot learned and presses T for you.
-// Writes a short description of a message (never the whole thing) so we can see its shape.
-function reconSummary(v, d) {
-  if (v === null || v === undefined) return String(v);
-  const t = typeof v;
-  if (t === "string") return JSON.stringify(v.length > 60 ? v.slice(0, 60) + "...(" + v.length + " chars)" : v);
-  if (t === "number" || t === "boolean") return String(v);
-  if (t === "function") return "fn";
-  if (v instanceof ArrayBuffer) return "ArrayBuffer(" + v.byteLength + ")";
-  if (ArrayBuffer.isView(v)) {
-    let head = "";
-    try { head = Array.from(v.subarray ? v.subarray(0, 12) : []).join(","); } catch (_) {}
-    return v.constructor.name + "(" + v.length + ")[" + head + (v.length > 12 ? ",..." : "") + "]";
+function reconSummary(v,d) {
+  if(v===null || v===undefined) return String(v);
+  const t=typeof v;
+  if(t==="string") return JSON.stringify(v.length>60?v.slice(0,60)+"...("+v.length+" chars)":v);
+  if(t==="number" || t==="boolean") return String(v);
+  if(t==="function") return "fn";
+  if(v instanceof ArrayBuffer) return "ArrayBuffer("+v.byteLength+")";
+  if(ArrayBuffer.isView(v)) {
+    let head="";
+    try { head=Array.from(v.subarray?v.subarray(0,12):[]).join(","); } catch (_) {}
+    return v.constructor.name+"("+v.length+")["+head+(v.length>12?",...":"")+"]";
   }
-  if (Array.isArray(v)) {
-    if (d >= 3) return "Array(" + v.length + ")";
-    return "Array(" + v.length + ")[" + v.slice(0, 3).map((x) => reconSummary(x, d + 1)).join(", ") + (v.length > 3 ? ", ..." : "") + "]";
+  if(Array.isArray(v)) {
+    if(d>=3) return "Array("+v.length+")";
+    return "Array("+v.length+")["+v.slice(0,3).map(x=>reconSummary(x,d+1)).join(", ")+(v.length>3?", ...":"")+"]";
   }
-  if (t === "object") {
-    if (d >= 3) return "{...}";
-    const ks = Object.keys(v);
-    return "{" + ks.slice(0, 14).map((k) => k + ": " + reconSummary(v[k], d + 1)).join(", ") + (ks.length > 14 ? ", ...(" + ks.length + " keys)" : "") + "}";
+  if(t==="object") {
+    if(d>=3) return "{...}";
+    const ks=Object.keys(v);
+    return "{"+ks.slice(0,14).map(k=>k+": "+reconSummary(v[k],d+1)).join(", ")+(ks.length>14?", ...("+ks.length+" keys)":"")+"}";
   }
   return t;
 }
 
 function installRecon() {
-  const OrigWorker = window.Worker;
-  if (!OrigWorker || window.__ptReconInstalled) return;
-  window.__ptReconInstalled = true;
-  window.__ptWorkers = [];
-  window.Worker = function (url, opts) {
-    const w = new OrigWorker(url, opts);
-    const id = window.__ptWorkers.length;
-    const entry = { w: w, url: String(url), opts: opts };
+  const OrigWorker=window.Worker;
+  if(!OrigWorker || window.__ptReconInstalled) return;
+  window.__ptReconInstalled=true;
+  window.__ptWorkers=[];
+  window.Worker=function(url,opts) {
+    const w=new OrigWorker(url,opts);
+    const id=window.__ptWorkers.length;
+    const entry={w,url:String(url),opts};
     window.__ptWorkers.push(entry);
-    console.log("PTBOT_RECON worker #" + id + " created: " + String(url).slice(0, 140) + " options=" + JSON.stringify(opts || {}));
+    console.log("PTBOT_RECON worker #"+id+" created: "+String(url).slice(0,140)+" options="+JSON.stringify(opts||{}));
     try {
-      if (String(url).indexOf("blob:") === 0) {
-        fetch(url).then((r) => r.text()).then((txt) => {
-          entry.src = txt;
-          console.log("PTBOT_RECON worker #" + id + " source is " + txt.length + " characters long");
-        }).catch(() => {});
+      if(String(url).indexOf("blob:")===0) {
+        fetch(url).then(r=>r.text()).then(txt=>{
+          entry.src=txt;
+          console.log("PTBOT_RECON worker #"+id+" source is "+txt.length+" characters long");
+        }).catch(()=>{});
       }
     } catch (_) {}
-    const origPost = w.postMessage.bind(w);
-    let nOut = 0, nIn = 0;
-    w.postMessage = function (m, t) {
+    const origPost=w.postMessage.bind(w);
+    let nOut=0,nIn=0;
+    w.postMessage=function(m,t) {
       nOut++;
-      if (nOut <= 40 || nOut % 500 === 0) console.log("PTBOT_RECON #" + id + " game -> worker, message " + nOut + ": " + reconSummary(m, 0));
-      return origPost(m, t);
+      if(nOut<=40 || nOut%500===0) console.log("PTBOT_RECON #"+id+" game -> worker, message "+nOut+": "+reconSummary(m,0));
+      return origPost(m,t);
     };
-    w.addEventListener("message", (ev) => {
+    w.addEventListener("message",ev=>{
       nIn++;
-      if (nIn <= 40 || nIn % 500 === 0) console.log("PTBOT_RECON #" + id + " worker -> game, message " + nIn + ": " + reconSummary(ev.data, 0));
+      if(nIn<=40 || nIn%500===0) console.log("PTBOT_RECON #"+id+" worker -> game, message "+nIn+": "+reconSummary(ev.data,0));
     });
     return w;
   };
-  window.Worker.prototype = OrigWorker.prototype;
+  window.Worker.prototype=OrigWorker.prototype;
   console.log("PTBOT_RECON installed (watching for physics workers)");
 }
 
 function setupMainThread() {
-  if (RECON) { try { installRecon(); } catch (err) { console.log("PTBOT_RECON failed", err); } }
-  if (typeof BroadcastChannel === "undefined") return;
-  const ch = new BroadcastChannel("ptbot");
-  const STORE = "ptbot_learn_v5";
+  if(RECON) { try { installRecon(); } catch(err) { console.log("PTBOT_RECON failed",err); } }
+  if(typeof BroadcastChannel==="undefined") return;
+  const ch=new BroadcastChannel("ptbot");
+  const STORE="ptbot_learn_v5";
 
-  function fire(type, k) {
-    const ev = new KeyboardEvent(type, {
-      key: k.key, code: k.code, keyCode: k.keyCode, which: k.keyCode, bubbles: true, cancelable: true
+  function fire(type,k) {
+    const ev=new KeyboardEvent(type,{
+      key:k.key,code:k.code,keyCode:k.keyCode,which:k.keyCode,bubbles:true,cancelable:true
     });
-    (document.activeElement || document.body || document).dispatchEvent(ev);
-  }
-  function tap(k, ms) {
-    fire("keydown", k);
-    setTimeout(() => fire("keyup", k), ms);
+    (document.activeElement||document.body||document).dispatchEvent(ev);
   }
 
-  ch.onmessage = (ev) => {
-    const m = ev.data || {};
-    if (m.type === "hello") {
+  function tap(k,ms) {
+    fire("keydown",k);
+    setTimeout(()=>fire("keyup",k),ms);
+  }
+
+  ch.onmessage=ev=>{
+    const m=ev.data||{};
+    if(m.type==="hello") {
       try {
-        const d = localStorage.getItem(STORE);
-        ch.postMessage({ type: "load", data: d ? JSON.parse(d) : null });
+        const d=localStorage.getItem(STORE);
+        ch.postMessage({type:"load",data:d?JSON.parse(d):null});
       } catch (_) {}
-    } else if (m.type === "save") {
-      try { localStorage.setItem(STORE, JSON.stringify(m.data)); } catch (_) {}
-    } else if (m.type === "restart" && AUTO_RESTART) {
-      setTimeout(() => {
-        tap(RESTART_KEY, 60);
-        if (AUTO_START) {
-          setTimeout(() => {
-            tap({ key: "ArrowUp", code: "ArrowUp", keyCode: 38 }, AUTO_START_MS);
-            tap({ key: "w", code: "KeyW", keyCode: 87 }, AUTO_START_MS);
-          }, AUTO_START_DELAY);
+    } else if(m.type==="save") {
+      try { localStorage.setItem(STORE,JSON.stringify(m.data)); } catch (_) {}
+    } else if(m.type==="restart" && AUTO_RESTART) {
+      setTimeout(()=>{
+        tap(RESTART_KEY,60);
+        if(AUTO_START) {
+          setTimeout(()=>{
+            tap({key:"ArrowUp",code:"ArrowUp",keyCode:38},AUTO_START_MS);
+            tap({key:"w",code:"KeyW",keyCode:87},AUTO_START_MS);
+          },AUTO_START_DELAY);
         }
-      }, m.delay || 300);
+      },m.delay||300);
     }
   };
 }
@@ -1105,27 +997,26 @@ function setupMainThread() {
 class TutorialBot extends PolyMod {
   constructor() {
     super();
-    this.modName = "PolyTrack Tutorial Bot";
-    this.modAuthor = "Kn1ght-09";
-    this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.5.2";
-    this.touchingPhysics = true;
+    this.modName="PolyTrack Tutorial Bot";
+    this.modAuthor="Kn1ght-09";
+    this.modID="polytrack-tutorial-bot";
+    this.modVersion="0.5.3";
+    this.touchingPhysics=true;
   }
 
-  init = (pml) => {
-    try { setupMainThread(); } catch (err) { console.log("PTBOT main-thread setup failed", err); }
+  init=(pml)=>{
+    try { setupMainThread(); } catch(err) { console.log("PTBOT main-thread setup failed",err); }
     pml.registerSimWorkerMixin({
-      type: MixinType.INSERT,
-      token: "function n(e, r) {",
-      func: BOT_BODY
+      type:MixinType.INSERT,
+      token:"function n(e, r) {",
+      func:BOT_BODY
     });
-
     pml.registerSimWorkerMixin({
-      type: MixinType.INSERT,
-      token: "(($o.length = 0), (onmessage = r));",
-      func: WORKER_HELPERS
+      type:MixinType.INSERT,
+      token:"(($o.length = 0), (onmessage = r));",
+      func:WORKER_HELPERS
     });
   };
 }
 
-export let polyMod = new TutorialBot();
+export let polyMod=new TutorialBot();
