@@ -458,7 +458,7 @@ const WORKER_HELPERS = `
     
 
 
-const aheadAndFaster = dt <= 0 && dv >= 0;
+const aheadAndFaster = dt <= 0 && dv >= -2;
 const worse = !aheadAndFaster && (dEff > 3 || dt > 250);
 
 console.log("PTBOT_RESTART_CHECK", {
