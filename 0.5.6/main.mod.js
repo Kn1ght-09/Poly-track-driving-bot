@@ -459,7 +459,7 @@ const WORKER_HELPERS = `
 
 
 const aheadAndFaster = dt <= 0 && dv >= -2;
-const worse = !aheadAndFaster && (dEff > 100 || dt > 250);
+const worse = !aheadAndFaster && (dEff > 25 || dt > 250);
 
 console.log("PTBOT_RESTART_CHECK", {
   checkpoint: name,
