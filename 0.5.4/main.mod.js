@@ -458,6 +458,18 @@ const WORKER_HELPERS = `
     const aheadAndFaster = dt<=0 && dv>=0;
     const worse = !aheadAndFaster && (dEff>3 || dt>250);
     const info=(dt>0?"+":"")+(dt/1000).toFixed(3)+" s, "+(dv>0?"+":"")+Math.round(dv)+" km/h";
+    console.log("PTBOT_CHECKPOINT_DIAG", {
+  checkpoint: name,
+  botFrames: frames,
+  ghostFrames: B.gt[k],
+  dtSeconds: +(dt / 1000).toFixed(3),
+  botSpeed: +speed.toFixed(1),
+  ghostSpeed: +B.gv[k].toFixed(1),
+  dv: +dv.toFixed(1),
+  dEff: +dEff.toFixed(3),
+  aheadAndFaster,
+  worse
+});
 
     if(worse && !aheadAndFaster) {
   console.log("PTBOT_LEARN "+name+" vs ghost: "+info+" -> not enough, restarting");
