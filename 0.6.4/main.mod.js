@@ -1,4 +1,4 @@
-import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
+import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3-2/PolyTypes.js";
 
 const AUTO_RESTART = true;
 const AUTO_START = true;
