@@ -1091,10 +1091,36 @@ const WORKER_HELPERS = `
         return;
       }
 
-      const startGap = Math.hypot(
+      let startGap = Math.hypot(
         found.route[0][0] - start.p[0],
         found.route[0][2] - start.p[2]
       );
+
+      // Some saved tracks store their placed road geometry in a local X
+      // coordinate frame, while the car start transform is world-shifted.
+      // Only infer an X-origin correction when Z and height already line up;
+      // otherwise do not guess, because the chosen route could be wrong.
+      if (startGap > 10) {
+        const first = found.route[0];
+        const offsetX = start.p[0] - first[0];
+        const offsetZ = start.p[2] - first[2];
+        const heightGap = Math.abs(start.p[1] - first[1]);
+
+        if (Math.abs(offsetZ) <= 10 && heightGap <= 8) {
+          for (const point of found.route) {
+            point[0] += offsetX;
+            point[2] += offsetZ;
+          }
+          startGap = Math.hypot(
+            found.route[0][0] - start.p[0],
+            found.route[0][2] - start.p[2]
+          );
+          console.log("PTBOT_AUTO_ROUTE applied track-origin offset", {
+            x: +offsetX.toFixed(2),
+            z: +offsetZ.toFixed(2)
+          });
+        }
+      }
 
       if (found.route.length !== N || startGap > 10 || found.pathLength < 40) {
         console.log("PTBOT_AUTO_ROUTE rejected candidate: startGap=" + startGap.toFixed(1) + "m length=" + found.pathLength + "m");
