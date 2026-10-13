@@ -64,10 +64,12 @@ const WORKER_HELPERS = `
     const dz = maxZ - minZ;
     const vertexCount = v.length / 3;
 
+    // Include simple road tiles too; several pieces between jumps have only
+    // a small number of vertices. Tiny support posts remain excluded by size.
     const eligible =
-      vertexCount >= 70 &&
-      Math.min(dx, dz) >= 12 &&
-      (dy <= 6.5 || vertexCount >= 300);
+      vertexCount >= 12 &&
+      Math.min(dx, dz) >= 8 &&
+      (dy <= 20 || vertexCount >= 300);
 
     return { eligible, dx, dy, dz, vertexCount };
   }
@@ -102,13 +104,18 @@ const WORKER_HELPERS = `
     let minZ = Infinity, maxZ = -Infinity;
 
     const usedIds = Object.create(null);
+    // Saved track part origins are grid coordinates; mesh vertices and the
+    // start transform are in world units.
+    const partScale = Number.isFinite(data.partSize) && data.partSize > 0
+      ? data.partSize
+      : 1;
 
     for (const p of data.parts) {
       if (!Array.isArray(p) || p.length < 12) continue;
 
-      const x = +p[0];
-      const y = +p[1];
-      const z = +p[2];
+      const x = +p[0] * partScale;
+      const y = +p[1] * partScale;
+      const z = +p[2] * partScale;
       const id = String(p[3]);
       const shape = shapes[id];
 
@@ -543,8 +550,65 @@ const WORKER_HELPERS = `
       }
     }
 
-    let target = -1, farthest = -1;
+    // Label connected skeleton components; big jumps can leave the launch
+    // and landing meshes disconnected in the 2D road mask.
+    const component = new Int32Array(n);
+    component.fill(-1);
+    const componentQueue = new Int32Array(n);
+    let componentCount = 0;
 
+    for (let seed = 0; seed < n; seed++) {
+      if (component[seed] >= 0) continue;
+
+      let qh = 0, qt = 0;
+      component[seed] = componentCount;
+      componentQueue[qt++] = seed;
+
+      while (qh < qt) {
+        const u = componentQueue[qh++];
+        const rr = rows[u], cc = cols[u];
+
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (!dr && !dc) continue;
+
+            const r2 = rr + dr, c2 = cc + dc;
+            if (r2 < 0 || r2 >= H || c2 < 0 || c2 >= W) continue;
+
+            const v = cellToNode[r2 * W + c2];
+            if (v >= 0 && component[v] < 0) {
+              component[v] = componentCount;
+              componentQueue[qt++] = v;
+            }
+          }
+        }
+      }
+
+      componentCount++;
+    }
+
+    // Pick the finish marker's closest road node, not an arbitrary dead end.
+    let finishNode = -1, finishGap = Infinity;
+    for (const finish of (Array.isArray(data.finishes) ? data.finishes : [])) {
+      const fp = Array.isArray(finish)
+        ? finish
+        : finish && Array.isArray(finish.p) ? finish.p : null;
+      if (!fp || fp.length < 3) continue;
+
+      for (let k = 0; k < n; k++) {
+        const x = minX + cols[k] * STEP;
+        const z = minZ + rows[k] * STEP;
+        const gap = Math.hypot(x - fp[0], z - fp[2]);
+
+        if (gap < finishGap) {
+          finishGap = gap;
+          finishNode = k;
+        }
+      }
+    }
+
+    // Default to the furthest reachable endpoint in the start component.
+    let target = -1, farthest = -1;
     for (let k = 0; k < n; k++) {
       if (
         degree[k] === 1 &&
@@ -555,13 +619,97 @@ const WORKER_HELPERS = `
         target = k;
       }
     }
-
     if (target < 0) {
       for (let k = 0; k < n; k++) {
         if (Number.isFinite(dist[k]) && dist[k] > farthest) {
           farthest = dist[k];
           target = k;
         }
+      }
+    }
+
+    let extraTailNodes = [];
+    if (finishNode >= 0 && finishGap <= 35) {
+      if (Number.isFinite(dist[finishNode])) {
+        // The finish is already connected to the start.
+        target = finishNode;
+        farthest = dist[finishNode];
+      } else {
+        // A jump can separate the launch and landing meshes. Find the entry
+        // node in the finish component nearest the launch-side path endpoint.
+        const exitNode = target;
+        const finishComponent = component[finishNode];
+        let entryNode = -1, entryGap = Infinity;
+        const ex = minX + cols[exitNode] * STEP;
+        const ez = minZ + rows[exitNode] * STEP;
+
+        for (let k = 0; k < n; k++) {
+          if (component[k] !== finishComponent) continue;
+          const x = minX + cols[k] * STEP;
+          const z = minZ + rows[k] * STEP;
+          const gap = Math.hypot(x - ex, z - ez);
+          if (gap < entryGap) {
+            entryGap = gap;
+            entryNode = k;
+          }
+        }
+
+        if (entryNode >= 0) {
+          const prev2 = new Int32Array(n);
+          prev2.fill(-1);
+          const seen2 = new Uint8Array(n);
+          const queue2 = new Int32Array(n);
+          let qh = 0, qt = 0;
+          queue2[qt++] = entryNode;
+          seen2[entryNode] = 1;
+
+          // Trace the disconnected landing component from its entry to finish.
+          while (qh < qt && !seen2[finishNode]) {
+            const u = queue2[qh++];
+            const rr = rows[u], cc = cols[u];
+
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                if (!dr && !dc) continue;
+
+                const r2 = rr + dr, c2 = cc + dc;
+                if (r2 < 0 || r2 >= H || c2 < 0 || c2 >= W) continue;
+
+                const v = cellToNode[r2 * W + c2];
+                if (v < 0 || component[v] !== finishComponent || seen2[v]) continue;
+
+                seen2[v] = 1;
+                prev2[v] = u;
+                queue2[qt++] = v;
+              }
+            }
+          }
+
+          if (seen2[finishNode]) {
+            const reverseTail = [];
+            for (
+              let cur = finishNode, guard = 0;
+              cur >= 0 && guard <= n;
+              cur = prev2[cur], guard++
+            ) {
+              reverseTail.push(cur);
+              if (cur === entryNode) break;
+            }
+            if (reverseTail[reverseTail.length - 1] === entryNode) {
+              extraTailNodes = reverseTail.reverse();
+            }
+          }
+
+          console.log("PTBOT_AUTO_ROUTE finish bridge", {
+            gap: +entryGap.toFixed(1),
+            finishGap: +finishGap.toFixed(1),
+            components: componentCount,
+            stitched: extraTailNodes.length > 0
+          });
+        }
+
+        // Do not silently use a partial route when a finish marker was found.
+        if (!extraTailNodes.length) return null;
       }
     }
 
@@ -611,6 +759,20 @@ const WORKER_HELPERS = `
     }
 
     path.reverse();
+
+    // Append the finish-side path if a jump disconnected it from the launch.
+    if (extraTailNodes.length) {
+      for (const k of extraTailNodes) {
+        const r = rows[k], c = cols[k], cell = r * W + c;
+        let py = yCount[cell] ? ySum[cell] / yCount[cell] : NaN;
+
+        if (!Number.isFinite(py)) {
+          py = path.length ? path[path.length - 1][1] : startP[1];
+        }
+
+        path.push([minX + c * STEP, py, minZ + r * STEP]);
+      }
+    }
 
     if (path.length < 20) return null;
 
@@ -862,10 +1024,17 @@ const WORKER_HELPERS = `
   }
 
   function lookAhead(p, distance, i) {
+    let j = i;
+    if (j < N - 1) {
+      const dx = ROUTE[j + 1][0] - ROUTE[j][0];
+      const dz = ROUTE[j + 1][2] - ROUTE[j][2];
+      if ((p.x - ROUTE[j][0]) * dx + (p.z - ROUTE[j][2]) * dz > 0) j++;
+    }
+
     let ax = p.x, ay = p.y, az = p.z;
     let left = distance;
 
-    for (let k = i; k < N; k++) {
+    for (let k = j; k < N; k++) {
       const b = ROUTE[k];
       const dx = b[0] - ax;
       const dz = b[2] - az;
@@ -896,6 +1065,21 @@ const WORKER_HELPERS = `
       z: b[2],
       index: N-1
     };
+  }
+
+  function lateral(p, i) {
+    const k = Math.max(0, Math.min(N - 2, i));
+    const ax = ROUTE[k][0], az = ROUTE[k][2];
+    const bx = ROUTE[k + 1][0], bz = ROUTE[k + 1][2];
+    const dx = bx - ax, dz = bz - az;
+    const length = Math.hypot(dx, dz) || 1e-9;
+
+    let t = ((p.x - ax) * dx + (p.z - az) * dz) / (length * length);
+    t = Math.max(0, Math.min(1, t));
+
+    const ox = p.x - (ax + dx * t);
+    const oz = p.z - (az + dz * t);
+    return -(dz * ox - dx * oz) / length;
   }
 
   function choose(state, id) {
@@ -968,7 +1152,8 @@ const WORKER_HELPERS = `
     const tx = dx / tl, tz = dz / tl;
     const angle = Math.atan2(fz * tx - fx * tz, fx * tx + fz * tz);
 
-    let acc = (bot.acc[id] || 0) + Math.max(-1, Math.min(1, angle * STEER_GAIN * (1 + 2 * Math.max(0, 1 - speed / 150)) * STEER_SIGN));
+    const steerAngle = angle + 0.03 * Math.max(-8, Math.min(8, lateral(state.position, i)));
+    let acc = (bot.acc[id] || 0) + Math.max(-1, Math.min(1, steerAngle * STEER_GAIN * (1 + 2 * Math.max(0, 1 - speed / 150)) * STEER_SIGN));
     let right = false, left = false;
     if (acc >= 1) { right = true; acc -= 1; }
     else if (acc <= -1) { left = true; acc += 1; }
@@ -1075,13 +1260,38 @@ const WORKER_HELPERS = `
         return;
       }
 
+      const partScale = Number.isFinite(Lo.partSize) && Lo.partSize > 0
+        ? Lo.partSize
+        : 1;
+      const finishes = [];
+
+      for (const p of parts) {
+        const shape = lib[String(p[3])];
+        const detector = shape && shape.detector;
+        if (!detector || Number(detector.type) !== 1) continue;
+
+        const center = Array.isArray(detector.center)
+          ? detector.center
+          : [0, 0, 0];
+        const q = p.slice(8, 12).map(Number);
+        const offset = rotatePoint(center, q);
+
+        finishes.push({
+          p: [
+            +p[0] * partScale + offset[0],
+            +p[1] * partScale + offset[1],
+            +p[2] * partScale + offset[2]
+          ]
+        });
+      }
+
       const data = {
         partSize: Lo.partSize,
         parts,
         lib,
         start,
         checkpoints: null,
-        finishes: null,
+        finishes,
         mountainOffset: m.mountainOffset || null
       };
 
@@ -1091,36 +1301,10 @@ const WORKER_HELPERS = `
         return;
       }
 
-      let startGap = Math.hypot(
+      const startGap = Math.hypot(
         found.route[0][0] - start.p[0],
         found.route[0][2] - start.p[2]
       );
-
-      // Some saved tracks store their placed road geometry in a local X
-      // coordinate frame, while the car start transform is world-shifted.
-      // Only infer an X-origin correction when Z and height already line up;
-      // otherwise do not guess, because the chosen route could be wrong.
-      if (startGap > 10) {
-        const first = found.route[0];
-        const offsetX = start.p[0] - first[0];
-        const offsetZ = start.p[2] - first[2];
-        const heightGap = Math.abs(start.p[1] - first[1]);
-
-        if (Math.abs(offsetZ) <= 10 && heightGap <= 8) {
-          for (const point of found.route) {
-            point[0] += offsetX;
-            point[2] += offsetZ;
-          }
-          startGap = Math.hypot(
-            found.route[0][0] - start.p[0],
-            found.route[0][2] - start.p[2]
-          );
-          console.log("PTBOT_AUTO_ROUTE applied track-origin offset", {
-            x: +offsetX.toFixed(2),
-            z: +offsetZ.toFixed(2)
-          });
-        }
-      }
 
       if (found.route.length !== N || startGap > 10 || found.pathLength < 40) {
         console.log("PTBOT_AUTO_ROUTE rejected candidate: startGap=" + startGap.toFixed(1) + "m length=" + found.pathLength + "m");
