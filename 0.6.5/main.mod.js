@@ -1,4 +1,4 @@
-import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.3/PolyTypes.js";
+import { PolyMod, MixinType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.6.4/PolyTypes.js";
 
 const AUTO_RESTART = true;
 const AUTO_START = true;
@@ -958,4 +958,273 @@ const WORKER_HELPERS = `
       Math.min(LOOK_MAX, LOOK_BASE + speed * LOOK_SPEED)
     );
 
-    const target = lookAhead(state.position, ld
+    const target = lookAhead(state.position, ld, i);
+    const f = rotateVec(state.quaternion, { x: 0, y: 0, z: FORWARD_SIGN });
+    const dx = target.x - state.position.x;
+    const dz = target.z - state.position.z;
+    const fl = Math.hypot(f.x, f.z) || 1;
+    const tl = Math.hypot(dx, dz) || 1;
+    const fx = f.x / fl, fz = f.z / fl;
+    const tx = dx / tl, tz = dz / tl;
+    const angle = Math.atan2(fz * tx - fx * tz, fx * tx + fz * tz);
+
+    let acc = (bot.acc[id] || 0) + Math.max(-1, Math.min(1, angle * STEER_GAIN * (1 + 2 * Math.max(0, 1 - speed / 150)) * STEER_SIGN));
+    let right = false, left = false;
+    if (acc >= 1) { right = true; acc -= 1; }
+    else if (acc <= -1) { left = true; acc += 1; }
+    bot.acc[id] = acc;
+
+    let targetSpeed = 1000;
+    for (let j = i; j <= Math.min(N - 1, i + 22); j++) {
+      targetSpeed = Math.min(targetSpeed, bot.cap[j] + (j - i) * 5);
+    }
+    targetSpeed = Math.max(35, targetSpeed);
+    const up = speed < targetSpeed - 2;
+    const down = speed > targetSpeed + 8;
+
+    bot.dbg = {
+      index: i,
+      speed: Math.round(speed),
+      targetSpeed: Math.round(targetSpeed),
+      angle: +angle.toFixed(3),
+      dynamicRoute
+    };
+    return { up, right, down, left, reset: false };
+  }
+
+  const TRACK_LIB = Object.create(null);
+  let activeTrackCode = null;
+  const round3 = v => Math.round(v * 1000) / 1000;
+
+  function captureTrack(m) {
+    if (!m || typeof m !== "object") return;
+
+    if (m.messageType === 0 && Array.isArray(m.trackParts)) {
+      for (const p of m.trackParts) {
+        TRACK_LIB[p.id] = {
+          v: p.vertices,
+          detector: p.detector || null,
+          startOffset: p.startOffset || null
+        };
+      }
+      return;
+    }
+
+    if (
+      m.messageType !== 3 ||
+      typeof m.trackData !== "string" ||
+      m.carRecording != null ||
+      m.trackData === activeTrackCode
+    ) return;
+
+    try {
+      if (
+        typeof Ko === "undefined" ||
+        typeof eo === "undefined" ||
+        typeof Lo === "undefined"
+      ) {
+        console.log("PTBOT_AUTO_ROUTE missing PolyTrack decoder globals");
+        return;
+      }
+
+      const track = Ko.fromSaveString(m.trackData);
+      if (!track) {
+        console.log("PTBOT_AUTO_ROUTE could not decode track data");
+        return;
+      }
+
+      const parts = [], used = Object.create(null);
+
+      track.forEachPart((x, y, z, id, rot, axis, color, cpo, so) => {
+        const q = eo[axis][rot];
+        if (!q) return;
+
+        parts.push([
+          x, y, z, id, rot, axis,
+          cpo == null ? -1 : cpo,
+          so == null ? -1 : so,
+          round3(q.x), round3(q.y), round3(q.z), round3(q.w)
+        ]);
+
+        used[id] = true;
+      });
+
+      const lib = {};
+      for (const id of Object.keys(used)) {
+        const e = TRACK_LIB[id];
+        if (e && e.v) {
+          lib[id] = {
+            v: Array.from(e.v, round3),
+            detector: e.detector,
+            startOffset: e.startOffset
+          };
+        }
+      }
+
+      let start = null;
+      try {
+        const st = track.getStartTransform();
+        start = {
+          p: [st.position.x, st.position.y, st.position.z],
+          q: [st.quaternion.x, st.quaternion.y, st.quaternion.z, st.quaternion.w]
+        };
+      } catch (_) {}
+
+      if (!start) {
+        console.log("PTBOT_AUTO_ROUTE could not read track start");
+        return;
+      }
+
+      const data = {
+        partSize: Lo.partSize,
+        parts,
+        lib,
+        start,
+        checkpoints: null,
+        finishes: null,
+        mountainOffset: m.mountainOffset || null
+      };
+
+      const found = extractRoadRoute(data, N);
+      if (!found) {
+        console.log("PTBOT_AUTO_ROUTE could not build a road route; extractor needs adjustment");
+        return;
+      }
+
+      const startGap = Math.hypot(
+        found.route[0][0] - start.p[0],
+        found.route[0][2] - start.p[2]
+      );
+
+      if (found.route.length !== N || startGap > 10 || found.pathLength < 40) {
+        console.log("PTBOT_AUTO_ROUTE rejected candidate: startGap=" + startGap.toFixed(1) + "m length=" + found.pathLength + "m");
+        return;
+      }
+
+      ROUTE.splice(0, ROUTE.length, ...found.route);
+      rebuildRouteData();
+      dynamicRoute = true;
+      activeTrackCode = m.trackData;
+
+      bot.idx = Object.create(null);
+      bot.acc = Object.create(null);
+      bot.lastFrames = Object.create(null);
+      bot.lastPos = Object.create(null);
+      bot.finishSent = false;
+
+      console.log("PTBOT_AUTO_ROUTE READY", {
+        points: N,
+        length: found.pathLength,
+        startGap: +startGap.toFixed(2),
+        roadFaces: found.roadFaces,
+        skeleton: found.skeletonPoints,
+        shapeIds: found.shapeIds
+      });
+    } catch (err) {
+      console.log("PTBOT_AUTO_ROUTE error: " + (err && err.stack ? err.stack : String(err)));
+    }
+  }
+
+  try {
+    const originalOnMessage = onmessage;
+    onmessage = function(ev) {
+      try { captureTrack(ev.data); }
+      catch (err) { console.log("PTBOT_AUTO_ROUTE capture error", err); }
+      return originalOnMessage.call(this, ev);
+    };
+  } catch (err) {
+    console.log("PTBOT_AUTO_ROUTE could not install worker message hook", err);
+  }
+
+  globalThis.__ptAdaptiveBot = {
+    decode,
+    choose,
+    route: ROUTE,
+    get ready() { return dynamicRoute; },
+    get debug() { return bot.dbg; }
+  };
+})();
+`;
+
+const BOT_BODY = `
+if (e.userControls && globalThis.__ptAdaptiveBot) {
+  const __b = globalThis.__ptAdaptiveBot;
+  let __state = null;
+  try {
+    __state = __b.decode(new Uint8Array(t.HEAPU8.buffer, i, 227).slice().buffer);
+  } catch (_) {}
+
+  if (__state) {
+    r = __b.choose(__state, e.id);
+  } else {
+    r = { up: true, right: false, down: false, left: false, reset: false };
+  }
+}
+`;
+
+function setupMainThread() {
+  if (typeof BroadcastChannel === "undefined") return;
+  const ch = new BroadcastChannel("ptbot");
+
+  function fire(type, k) {
+    const ev = new KeyboardEvent(type, {
+      key: k.key,
+      code: k.code,
+      keyCode: k.keyCode,
+      which: k.keyCode,
+      bubbles: true,
+      cancelable: true
+    });
+    (document.activeElement || document.body || document).dispatchEvent(ev);
+  }
+
+  function tap(k, ms) {
+    fire("keydown", k);
+    setTimeout(() => fire("keyup", k), ms);
+  }
+
+  ch.onmessage = ev => {
+    const m = ev.data || {};
+    if (m.type === "restart" && AUTO_RESTART) {
+      setTimeout(() => {
+        tap(RESTART_KEY, 60);
+        if (AUTO_START) {
+          setTimeout(() => {
+            tap({ key: "ArrowUp", code: "ArrowUp", keyCode: 38 }, 100);
+            tap({ key: "w", code: "KeyW", keyCode: 87 }, 100);
+          }, AUTO_START_DELAY);
+        }
+      }, m.delay || 300);
+    }
+  };
+}
+
+class PolyTrackAdaptiveBot extends PolyMod {
+  constructor() {
+    super();
+    this.modName = "PolyTrack Adaptive Driving Bot";
+    this.modAuthor = "Kn1ght-09";
+    this.modID = "polytrack-tutorial-bot";
+    this.modVersion = "0.6.5";
+    this.touchingPhysics = true;
+  }
+
+  init = pml => {
+    try { setupMainThread(); }
+    catch (err) { console.log("PTBOT setup failed", err); }
+
+    pml.registerSimWorkerMixin({
+      type: MixinType.INSERT,
+      token: "function n(e, r) {",
+      func: BOT_BODY
+    });
+
+    pml.registerSimWorkerMixin({
+      type: MixinType.INSERT,
+      token: "(($o.length = 0), (onmessage = r));",
+      func: WORKER_HELPERS
+    });
+  };
+}
+
+export let polyMod = new PolyTrackAdaptiveBot();
