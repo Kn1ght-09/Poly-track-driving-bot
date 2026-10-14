@@ -40,7 +40,7 @@ const WORKER_HELPERS = `
     ];
   }
 
-  function shapeInfo(v) {
+    function shapeInfo(v) {
     if (!Array.isArray(v) || v.length < 9 || v.length % 3) {
       return null;
     }
@@ -58,6 +58,21 @@ const WORKER_HELPERS = `
       if (z < minZ) minZ = z;
       if (z > maxZ) maxZ = z;
     }
+
+    const dx = maxX - minX;
+    const dy = maxY - minY;
+    const dz = maxZ - minZ;
+    const vertexCount = v.length / 3;
+
+    // Allow ramps, loops, and wall-ride sections to remain drivable.
+    // The original version was intentionally road-only.
+    const eligible =
+      vertexCount >= 8 &&
+      Math.min(dx, dz) >= 6 &&
+      (dy <= 60 || vertexCount >= 180);
+
+    return { eligible, dx, dy, dz, vertexCount };
+  }
 
     const dx = maxX - minX;
     const dy = maxY - minY;
@@ -152,9 +167,17 @@ const WORKER_HELPERS = `
         const nx = aby * acz - abz * acy;
         const ny = abz * acx - abx * acz;
         const nz = abx * acy - aby * acx;
-        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                const nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
 
-        if (nl < 1e-8 || ny / nl < 0.5) continue;
+        // Accept more than just flat road: ramps, banked turns, and wall/loop
+        // surfaces should stay in the candidate set if they are still driveable.
+        if (nl < 1e-8) continue;
+
+        const upness = ny / nl;
+        const sideBias = Math.abs(nx / nl) + Math.abs(nz / nl);
+
+        // Keep upward, sloped, and wall-like driveable surfaces.
+        if (!(upness > 0.12 || sideBias > 0.65)) continue;
 
         const face = [a, b, c];
         faces.push(face);
@@ -1306,7 +1329,7 @@ const WORKER_HELPERS = `
         found.route[0][2] - start.p[2]
       );
 
-      if (found.route.length !== N || startGap > 10 || found.pathLength < 40) {
+            if (found.route.length !== N || startGap > 18 || found.pathLength < 20) {
         console.log("PTBOT_AUTO_ROUTE rejected candidate: startGap=" + startGap.toFixed(1) + "m length=" + found.pathLength + "m");
         return;
       }
@@ -1415,7 +1438,7 @@ class PolyTrackAdaptiveBot extends PolyMod {
     this.modName = "PolyTrack Adaptive Driving Bot";
     this.modAuthor = "Kn1ght-09";
     this.modID = "polytrack-tutorial-bot";
-    this.modVersion = "0.6.5";
+    this.modVersion = "0.6.6";
     this.touchingPhysics = true;
   }
 
