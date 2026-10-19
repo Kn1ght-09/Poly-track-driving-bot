@@ -7,7 +7,7 @@ const MODE = "drive";
 // ---- FAST SIM TEST ----
 // true = the bot also drives replay cars. The game simulates replays much faster than real time,
 // so this tests whether the bot can run at that speed. (For this test LEARN and EXACT_REPLAY are off.)
-const FAST_SIM = true;
+const FAST_SIM = false;
 
 // Where the driving line comes from:
 //   "auto"      = use your recorded lap if it belongs to the loaded track, otherwise build a line from the track itself
@@ -16,7 +16,7 @@ const FAST_SIM = true;
 const ROUTE_SOURCE = "auto";
 
 // ---- SELF-LEARNING ----
-const LEARN = false;
+const LEARN = true;
 
 // ---- RECON ----
 const RECON = true;
@@ -47,7 +47,7 @@ const THR_BIG = 15;   // km/h over: acts immediately
 const LIFT_MS = 80;  // too fast for this long (ms) before lifting
 const BRAKE_MS = 40;  // too fast for this long (ms) before braking
 const CURV_DEAD = 0.03; // tiny wobbles in the line (under this many radians per point) don't count as a corner, so the bot stops slowing down in straight corridors
-const EXACT_REPLAY = false; // a replay you teach (O while a replay plays) is also stored frame by frame; the bot presses exactly those buttons from the start, and only takes over if the car leaves the replay's path
+const EXACT_REPLAY = true; // a replay you teach (O while a replay plays) is also stored frame by frame; the bot presses exactly those buttons from the start, and only takes over if the car leaves the replay's path
 const EXACT_OPT = true; // on a track with an exact replay the bot tries one tiny change per run (a press moved a few thousandths of a second earlier or later) and keeps it only if the run finishes faster
 const EXACT_TAP = false; // on later runs of an exact replay the bot tries fast tapping instead of long steering holds (skids less), keeps whichever finishes first
 const EXACT_TAP_RUN = 100; // only steering holds at least this many ms long are turned into taps
@@ -2397,7 +2397,8 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
     computeDerived();
     for(const k of PER_CAR) bot[k]=Object.create(null);
     bot.route=ROUTE; bot.noRoute=false; bot.routeKind=kind;
-    if(LEARN) { freshLearner(); if(!quiet) post({type:"hello",track:TRACK_ID,lesson:LESSON_KEY}); startRun(); }
+    if(LEARN) { freshLearner(); startRun(); }
+    if(!quiet) post({type:"hello",track:TRACK_ID,lesson:LESSON_KEY});
   }
   function hashStr(t) { let h=5381; for(let i=0;i<t.length;i++) h=((h*33)^t.charCodeAt(i))>>>0; return h.toString(16); }
   let lastTrackData=null;
@@ -2518,6 +2519,15 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
 `;
 
 const BOT_BODY = `
+  {
+    const __g = globalThis;
+    __g.__ptSR = __g.__ptSR || {n:0,t0:Date.now(),logs:0};
+    __g.__ptSR.n++;
+    if (__g.__ptSR.n % 5000 === 0 && __g.__ptSR.logs < 60) {
+      __g.__ptSR.logs++;
+      console.log("PTBOT_STEPRATE hook calls=" + __g.__ptSR.n + " real ms=" + (Date.now() - __g.__ptSR.t0) + " car id=" + e.id + " player=" + (e.userControls ? "yes" : "no") + " frame=" + e.frames);
+    }
+  }
   if (!e.userControls && globalThis.__ptTutorialBot && globalThis.__ptTutorialBot.fastSim && !globalThis.__ptTutorialBot.recOn) {
     const __fb = globalThis.__ptTutorialBot;
     __fb.curE = e.frames;
@@ -2525,8 +2535,19 @@ const BOT_BODY = `
       const __fbuf = new Uint8Array(t.HEAPU8.buffer, i, 227).slice();
       const __fst = __fb.decode(__fbuf.buffer);
       if (__fst) {
+        if (e.frames === 0 || !__fb.fastT0) {
+          __fb.fastT0 = Date.now(); __fb.fastLastLog = 0; __fb.fastLogs = 0; __fb.fastDone = false;
+          console.log("PTBOT_FAST bot is steering a replay car, id=" + e.id + " frame=" + e.frames);
+        }
         r = __fb.choose(__fst, e.id);
-        if (!__fb.fastLogged) { __fb.fastLogged = true; console.log("PTBOT_FAST bot is steering a replay car, id=" + e.id + " frame=" + e.frames); }
+        if (e.frames - __fb.fastLastLog >= 2000 && __fb.fastLogs < 40) {
+          __fb.fastLastLog = e.frames; __fb.fastLogs++;
+          console.log("PTBOT_FAST frame=" + e.frames + " speed=" + Math.round(__fst.speedKmh) + " real ms=" + (Date.now() - __fb.fastT0));
+        }
+        if (!__fb.fastDone && __fst.finishFrames !== null) {
+          __fb.fastDone = true;
+          console.log("PTBOT_FAST finished at frame " + __fst.finishFrames + " after " + (Date.now() - __fb.fastT0) + " real ms");
+        }
       }
     } catch (_) {}
   }
@@ -2592,6 +2613,7 @@ function ptDownload(name,text) {
 }
 
 // In the console: ptReconDump() saves all recon lines as a file; ptWorkerSource(0) saves the physics worker's code.
+window.ptMark=(label)=>rlog("PTBOT_MARK t="+Math.round(performance.now())+"ms "+String(label||""));
 window.ptReconDump=()=>ptDownload("ptbot_recon.txt",(window.__ptReconLines||[]).join("\n"));
 window.ptWorkerSource=(id)=>{
   const e=(window.__ptWorkers||[])[id||0];
@@ -2659,15 +2681,27 @@ function installRecon() {
       } catch(err) { rlog("PTBOT_RECON raw save failed: "+String(err)); }
     };
     let nOut=0,nIn=0;
+    const sigOut=Object.create(null), sigIn=Object.create(null);
+    const sigOf=(v)=>{
+      try {
+        if(v===null || v===undefined) return String(v);
+        if(v instanceof ArrayBuffer) return "ArrayBuffer";
+        if(ArrayBuffer.isView(v)) return v.constructor.name;
+        if(typeof v==="object") return Object.keys(v).slice(0,12).join(",")+(v.messageType!==undefined?"|mt"+v.messageType:"");
+        return typeof v;
+      } catch (_) { return "?"; }
+    };
     w.postMessage=function(m,t) {
       rawPost(m);
       nOut++;
-      if(nOut<=40 || nOut%500===0) rlog("PTBOT_RECON #"+id+" game -> worker, message "+nOut+": "+reconSummary(m,0));
+      const sg=sigOf(m); sigOut[sg]=(sigOut[sg]||0)+1;
+      if(sigOut[sg]<=12 || sigOut[sg]%2000===0) rlog("PTBOT_RECON #"+id+" t="+Math.round(performance.now())+"ms game -> worker, message "+nOut+" (kind count "+sigOut[sg]+"): "+reconSummary(m,0));
       return origPost(m,t);
     };
     w.addEventListener("message",ev=>{
       nIn++;
-      if(nIn<=40 || nIn%500===0) rlog("PTBOT_RECON #"+id+" worker -> game, message "+nIn+": "+reconSummary(ev.data,0));
+      const sg=sigOf(ev.data); sigIn[sg]=(sigIn[sg]||0)+1;
+      if(sigIn[sg]<=12 || sigIn[sg]%2000===0) rlog("PTBOT_RECON #"+id+" t="+Math.round(performance.now())+"ms worker -> game, message "+nIn+" (kind count "+sigIn[sg]+"): "+reconSummary(ev.data,0));
     });
     return w;
   };
@@ -2830,7 +2864,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.1.8";
+    this.modVersion="1.1.9";
     this.touchingPhysics=true;
   }
 
