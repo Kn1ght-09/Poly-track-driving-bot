@@ -997,6 +997,7 @@ function generateRoute(dec, opt) {
 const WORKER_HELPERS = `
 (() => {
   if (globalThis.__ptTutorialBot) return;
+  const PRIVATE = (typeof self !== "undefined" && self.name === "ptbot-private");
   const ROUTE_REC = ${JSON.stringify(ROUTE)};
   const ROUTE_SOURCE = ${JSON.stringify(ROUTE_SOURCE)};
   let ROUTE = ROUTE_REC;
@@ -1043,6 +1044,7 @@ const WORKER_HELPERS = `
   const bot = {
     mode: "${MODE}",
     fastSim: ${FAST_SIM},
+    priv: PRIVATE,
     enabled: true,
     idx: Object.create(null),
     acc: Object.create(null),
@@ -1249,7 +1251,7 @@ const WORKER_HELPERS = `
   const DEF = {sp:1, off:0, br:6, ab:0};
   function clampv(v,a,b) { return Math.max(a,Math.min(b,v)); }
   function rnd(a) { return (Math.random()*2-1)*a; }
-  function post(m) { if(ch) { try { ch.postMessage(m); } catch(_) {} } }
+  function post(m) { if(ch) { try { if(PRIVATE) m=Object.assign({priv:true},m); ch.postMessage(m); } catch(_) {} } }
   function saveBest() { post({type:"save", track:TRACK_ID, data:{n:N, best:L.best}}); }
 
   function segOf(i) {
@@ -2399,6 +2401,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
     bot.route=ROUTE; bot.noRoute=false; bot.routeKind=kind;
     if(LEARN) { freshLearner(); startRun(); }
     if(!quiet) post({type:"hello",track:TRACK_ID,lesson:LESSON_KEY});
+    if(!quiet) post({type:"routeready"});
   }
   function hashStr(t) { let h=5381; for(let i=0;i<t.length;i++) h=((h*33)^t.charCodeAt(i))>>>0; return h.toString(16); }
   let lastTrackData=null;
@@ -2528,7 +2531,7 @@ const BOT_BODY = `
       console.log("PTBOT_STEPRATE hook calls=" + __g.__ptSR.n + " real ms=" + (Date.now() - __g.__ptSR.t0) + " car id=" + e.id + " player=" + (e.userControls ? "yes" : "no") + " frame=" + e.frames);
     }
   }
-  if (!e.userControls && globalThis.__ptTutorialBot && globalThis.__ptTutorialBot.fastSim && !globalThis.__ptTutorialBot.recOn) {
+  if (!e.userControls && globalThis.__ptTutorialBot && (globalThis.__ptTutorialBot.fastSim || globalThis.__ptTutorialBot.priv) && !globalThis.__ptTutorialBot.recOn) {
     const __fb = globalThis.__ptTutorialBot;
     __fb.curE = e.frames;
     try {
@@ -2649,6 +2652,7 @@ function installRecon() {
   if(!OrigWorker || window.__ptReconInstalled) return;
   window.__ptReconInstalled=true;
   window.__ptWorkers=[];
+  window.__ptOrigWorker=OrigWorker;
   window.Worker=function(url,opts) {
     const w=new OrigWorker(url,opts);
     const id=window.__ptWorkers.length;
@@ -2666,6 +2670,8 @@ function installRecon() {
     const origPost=w.postMessage.bind(w);
     const rawPost=function(m) {
       try {
+        if(m && m.messageType===0 && Array.isArray(m.trackParts)) { try { window.__ptM0=structuredClone(m); } catch (_) {} }
+        if(m && m.messageType===3 && typeof m.trackData==="string") { try { window.__ptM3=structuredClone(m); } catch (_) {} }
         if(m && m.messageType===0 && Array.isArray(m.trackParts) && !(window.__ptRaw && window.__ptRaw.parts)) {
           window.__ptRaw=window.__ptRaw||{};
           window.__ptRaw.version=m.version;
@@ -2735,6 +2741,58 @@ function setupMainThread() {
     if(!window.__ptRoute) { console.log("no generated line yet (it is only built when your recorded lap does not belong to the track, or ROUTE_SOURCE is generated)"); return; }
     ptDownload("ptbot_route.json",JSON.stringify(window.__ptRoute));
     console.log("saved ptbot_route.json");
+  };
+
+  function ptDecodeState(buf) {
+    const e=new Uint8Array(buf), d=new DataView(buf);
+    let o=4;
+    const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16); o+=3;
+    const speed=d.getFloat32(o,true); o+=4;
+    const flags=e[o++];
+    let finish=null;
+    if(flags&2) { finish=e[o]|(e[o+1]<<8)|(e[o+2]<<16); o+=3; }
+    return {frames:frames,speed:speed,finish:finish};
+  }
+  // ptFastLap(40000): the bot drives one lap in its own hidden fast physics worker (the same kind the game uses for replays)
+  window.ptFastLap=(frames)=>{
+    frames=frames||40000;
+    const OW=window.__ptOrigWorker;
+    const src=(window.__ptWorkers||[]).filter(e=>e.src && e.src.length>500000).pop();
+    if(!OW || !src) { console.log("PTBOT_FASTLAP no physics worker code saved yet. Start any race first (RECON must be true), then try again."); return; }
+    if(!window.__ptM0 || !window.__ptM3) { console.log("PTBOT_FASTLAP the game has not sent a track yet. Start any race first, then try again."); return; }
+    if(window.__ptFastW) { try { window.__ptFastW.terminate(); } catch (_) {} window.__ptFastW=null; }
+    const fw=new OW(URL.createObjectURL(new Blob([src.src],{type:"text/javascript"})),{name:"ptbot-private"});
+    window.__ptFastW=fw;
+    let tGo=null, done=false, lastLog=0;
+    fw.onerror=(e)=>console.log("PTBOT_FASTLAP worker error: "+(e&&e.message));
+    let loaded=false;
+    const load=()=>{
+      if(loaded) return;
+      loaded=true;
+      console.log("PTBOT_FASTLAP the worker has started, loading the track");
+      fw.postMessage(Object.assign({},structuredClone(window.__ptM0),{isRealtime:false}));
+      fw.postMessage(Object.assign({},structuredClone(window.__ptM3),{carId:0,carRecording:null}));
+      window.__ptFastWait=go;
+      setTimeout(()=>{ if(window.__ptFastWait===go) { window.__ptFastWait=null; console.log("PTBOT_FASTLAP no route-ready signal after 20 s, starting anyway"); go(); } },20000);
+    };
+    fw.onmessage=(ev)=>{
+      const d=ev.data;
+      if(d && d.messageType===9) { console.log("PTBOT_FASTLAP worker start-up test finished (deterministic: "+d.isDeterminstic+")"); load(); return; }
+      if(done || !tGo || !d || d.messageType!==10 || !d.carStateBuffers || !d.carStateBuffers.length) return;
+      const st=ptDecodeState(d.carStateBuffers[d.carStateBuffers.length-1]);
+      const ms=Math.round(performance.now()-tGo);
+      if(st.frames-lastLog>=5000) { lastLog=st.frames; console.log("PTBOT_FASTLAP sim frame "+st.frames+", "+Math.round(st.speed)+" km/h, after "+ms+" real ms"); }
+      if(st.finish!==null) { done=true; console.log("PTBOT_FASTLAP FINISHED the lap: "+(st.finish/1000).toFixed(3)+" s of game time in "+ms+" real ms ("+(st.finish/Math.max(1,ms)).toFixed(1)+"x real time)"); }
+      else if(st.frames>=frames-2) { done=true; console.log("PTBOT_FASTLAP reached the frame limit ("+frames+") without finishing, after "+ms+" real ms"); }
+    };
+    const go=()=>{
+      tGo=performance.now();
+      console.log("PTBOT_FASTLAP the route is ready, running up to "+frames+" frames flat out");
+      fw.postMessage({messageType:5,carId:0,targetSimulationTimeFrames:frames});
+    };
+    setTimeout(()=>{ if(!loaded) { console.log("PTBOT_FASTLAP no start-up answer after 15 s, loading the track anyway"); load(); } },15000);
+    console.log("PTBOT_FASTLAP private worker created, waiting for it to start up");
+    fw.postMessage({messageType:2});
   };
 
   let recOn=false, recToast=null;
@@ -2844,7 +2902,9 @@ function setupMainThread() {
       console.log("PTBOT_ROUTE (page) line built: "+m.info.points+" points, "+m.info.lengthM+" m, "+m.info.jumps+" jump(s). Type ptRouteDump() to save it as a file.");
     } else if(m.type==="save") {
       try { localStorage.setItem(storeKey(m.track),JSON.stringify(m.data)); } catch (_) {}
-    } else if(m.type==="restart" && AUTO_RESTART) {
+    } else if(m.type==="routeready") {
+      if(m.priv && window.__ptFastWait) { const f=window.__ptFastWait; window.__ptFastWait=null; setTimeout(f,800); }
+    } else if(m.type==="restart" && AUTO_RESTART && !m.priv) {
       setTimeout(()=>{
         tap(RESTART_KEY,60);
         if(AUTO_START) {
@@ -2864,7 +2924,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.1.9";
+    this.modVersion="1.2.2";
     this.touchingPhysics=true;
   }
 
