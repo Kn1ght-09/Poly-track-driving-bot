@@ -1298,7 +1298,7 @@ const WORKER_HELPERS = `
     L.pending=true;
     L.pendingFrame=frames;
     console.log("PTBOT_LEARN restart ("+why+")");
-    post({type:"restart", delay:delay});
+    post({type:"restart", delay:delay, why:why});
   }
 
   function failRun(why,state) {
@@ -1479,6 +1479,8 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
   if(ch) {
     ch.onmessage=(ev) => {
       const m=ev.data || {};
+      if(m.to==="priv" && !PRIVATE) return;
+      if(PRIVATE && m.to!=="priv" && (m.type==="patches" || m.type==="exact" || m.type==="exact_tabu" || m.type==="load" || m.type==="routea")) return;
       if(m.type==="routea") {
         if(pendingBuild && pendingBuild.key===m.key) {
           clearTimeout(pendingBuild.timer);
@@ -1722,6 +1724,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
       bot.lastCrash[id]=-100000;
       bot.lastOff[id]=-100000;
       bot.finLogged[id]=false;
+      bot.lapFailSent=false;
       bot.offDump=false;
       bot.lastCp[id]=undefined;
       bot.lastAirborne[id]=false;
@@ -2758,11 +2761,18 @@ function setupMainThread() {
     const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16); o+=3;
     const speed=d.getFloat32(o,true); o+=4;
     const flags=e[o++];
-    return {frames:frames,speed:speed,finished:!!(flags&2)};
+    let finish=null;
+    if(flags&2) finish=e[o]|(e[o+1]<<8)|(e[o+2]<<16);
+    return {frames:frames,speed:speed,finished:!!(flags&2),finish:finish};
   }
-  // ptFastLap(40000): the bot drives one lap in its own hidden fast physics worker (the same kind the game uses for replays)
-  window.ptFastLap=(frames,explore)=>{
-    frames=frames||40000;
+  // ptFastLap(frames, explore, laps): the bot drives laps in its own hidden fast physics worker, restarting after each one
+  //   ptFastLap()              one lap on the best known line, no experiments
+  //   ptFastLap(40000,true,30) 30 laps in a row, the bot tries small changes (learns) between laps
+  // ptFastLoop(30) is a shortcut for the second one, ptFastStop() ends a run early.
+  window.ptFastStop=()=>{ if(window.__ptFastEnd) window.__ptFastEnd("__stop__",0); else console.log("PTBOT_FASTLAP nothing is running"); };
+  window.ptFastLoop=(laps,explore)=>window.ptFastLap(40000,explore!==false,laps||20);
+  window.ptFastLap=(frames,explore,laps)=>{
+    frames=frames||40000; laps=laps||1;
     const OW=window.__ptOrigWorker;
     const src=(window.__ptWorkers||[]).filter(e=>e.src && e.src.length>500000).pop();
     if(!OW || !src) { console.log("PTBOT_FASTLAP no physics worker code saved yet. Start any race first (RECON must be true), then try again."); return; }
@@ -2770,16 +2780,45 @@ function setupMainThread() {
     if(window.__ptFastW) { try { window.__ptFastW.terminate(); } catch (_) {} window.__ptFastW=null; }
     const fw=new OW(URL.createObjectURL(new Blob([src.src],{type:"text/javascript"})),{name:"ptbot-private"});
     window.__ptFastW=fw;
-    let tGo=null, done=false, lastLog=0, lastSt=null;
-    const stop=()=>{ try { fw.terminate(); } catch (_) {} if(window.__ptFastW===fw) window.__ptFastW=null; window.__ptFastEnd=null; };
+    let tGo=null, lastLog=0, lastSt=null, lapNo=0, lapDone=true, awaitFresh=false, allDone=false, loaded=false;
+    const results=[], t0=performance.now();
+    const stop=()=>{ try { fw.terminate(); } catch (_) {} if(window.__ptFastW===fw) window.__ptFastW=null; window.__ptFastEnd=null; window.__ptFastWait=null; };
+    const summary=()=>{
+      const ok=results.filter(r=>r.fin), secs=(performance.now()-t0)/1000;
+      const best=ok.length ? Math.min.apply(null,ok.map(r=>r.frames)) : null;
+      console.log("PTBOT_FASTLAP summary: "+results.length+" lap(s) in "+secs.toFixed(1)+" s ("+(results.length/Math.max(0.001,secs)).toFixed(2)+" laps per second), "+ok.length+" finished"+(best!==null ? ", best "+(best/1000).toFixed(3)+" s" : ""));
+    };
+    const endLap=(fin,text,fr)=>{
+      if(lapDone || allDone) return;
+      lapDone=true;
+      const ms=Math.round(performance.now()-tGo);
+      results.push({fin:fin,frames:fr,ms:ms});
+      console.log("PTBOT_FASTLAP lap "+lapNo+" "+text+" ("+ms+" real ms)");
+      if(lapNo>=laps) { allDone=true; summary(); stop(); }
+      else setTimeout(startLap,0);
+    };
     window.__ptFastEnd=(why,fr)=>{
-      if(done) return; done=true;
-      const ms=tGo?Math.round(performance.now()-tGo):0;
-      console.log("PTBOT_FASTLAP the bot failed: "+why+" (sim frame "+fr+", "+(lastSt?Math.round(lastSt.speed):"?")+" km/h, after "+ms+" real ms)");
-      stop();
+      if(why==="__stop__") { if(!allDone) { allDone=true; lapDone=true; summary(); stop(); } return; }
+      if(String(why)==="finished the track") return;
+      const f=fr || (lastSt?lastSt.frames:0);
+      endLap(false,"failed: "+why+" (sim frame "+f+", "+(lastSt?Math.round(lastSt.speed):"?")+" km/h)",f);
     };
     fw.onerror=(e)=>console.log("PTBOT_FASTLAP worker error: "+(e&&e.message));
-    let loaded=false;
+    const startLap=()=>{
+      lapNo++; lapDone=false; lastLog=0; lastSt=null;
+      if(lapNo>1) {
+        // restart: remove the car and make a new one on the same track (the same thing the game does when you press T)
+        fw.postMessage({messageType:4,carId:0});
+        fw.postMessage(Object.assign({},structuredClone(window.__ptM3),{carId:0,carRecording:null}));
+        awaitFresh=true;
+      } else fw.postMessage({ptCfg:"info"});
+      tGo=performance.now();
+      fw.postMessage({messageType:5,carId:0,targetSimulationTimeFrames:frames});
+    };
+    const go=()=>{
+      console.log("PTBOT_FASTLAP the route is ready, running "+laps+" lap(s) of up to "+frames+" frames flat out");
+      startLap();
+    };
     const load=()=>{
       if(loaded) return;
       loaded=true;
@@ -2793,19 +2832,14 @@ function setupMainThread() {
     fw.onmessage=(ev)=>{
       const d=ev.data;
       if(d && d.messageType===9) { console.log("PTBOT_FASTLAP worker start-up test finished (deterministic: "+d.isDeterminstic+")"); load(); return; }
-      if(done || !tGo || !d || d.messageType!==10 || !d.carStateBuffers || !d.carStateBuffers.length) return;
+      if(lapDone || allDone || !tGo || !d || d.messageType!==10 || !d.carStateBuffers || !d.carStateBuffers.length) return;
       const st=ptDecodeState(d.carStateBuffers[d.carStateBuffers.length-1]);
+      if(awaitFresh) { if(st.frames>1500) return; awaitFresh=false; }   // still messages from the old car
       lastSt=st;
       const ms=Math.round(performance.now()-tGo);
-      if(st.frames-lastLog>=5000) { lastLog=st.frames; console.log("PTBOT_FASTLAP sim frame "+st.frames+", "+Math.round(st.speed)+" km/h, after "+ms+" real ms"); }
-      if(st.finished) { done=true; console.log("PTBOT_FASTLAP FINISHED the lap: "+(st.frames/1000).toFixed(3)+" s of game time in "+ms+" real ms ("+(st.frames/Math.max(1,ms)).toFixed(1)+"x real time)"); stop(); }
-      else if(st.frames>=frames-2) { done=true; console.log("PTBOT_FASTLAP reached the frame limit ("+frames+") without finishing, after "+ms+" real ms"); stop(); }
-    };
-    const go=()=>{
-      tGo=performance.now();
-      console.log("PTBOT_FASTLAP the route is ready, running up to "+frames+" frames flat out");
-      fw.postMessage({ptCfg:"info"});
-      fw.postMessage({messageType:5,carId:0,targetSimulationTimeFrames:frames});
+      if(laps===1 && st.frames-lastLog>=5000) { lastLog=st.frames; console.log("PTBOT_FASTLAP sim frame "+st.frames+", "+Math.round(st.speed)+" km/h, after "+ms+" real ms"); }
+      if(st.finished) { const T=(st.finish!==null?st.finish:st.frames); endLap(true,"FINISHED: "+(T/1000).toFixed(3)+" s of game time, "+(T/Math.max(1,ms)).toFixed(1)+"x real time",T); }
+      else if(st.frames>=frames-2) endLap(false,"reached the frame limit ("+frames+") without finishing",st.frames);
     };
     setTimeout(()=>{ if(!loaded) { console.log("PTBOT_FASTLAP no start-up answer after 15 s, loading the track anyway"); load(); } },15000);
     console.log("PTBOT_FASTLAP private worker created, waiting for it to start up");
@@ -2863,27 +2897,28 @@ function setupMainThread() {
     if(m.priv) {
       if(m.type==="lapinfo") { console.log("PTBOT_FASTLAP what the hidden bot is using: "+JSON.stringify(m.info)); return; }
       if(m.type==="lapfail") { if(window.__ptFastEnd) window.__ptFastEnd(m.why,m.frames); return; }
-      if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd("the bot asked for a restart",m.frames||0); return; }
+      if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd(m.why||"the bot asked for a restart",m.frames||0); return; }
       if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready") return;
     }
+    const rp=(o)=>ch.postMessage(m.priv ? Object.assign({to:"priv"},o) : o);
     if(m.type==="hello") {
       lastTrackKey=m.track||null;
       lastLessonKey=m.lesson||null;
       try {
         const pl=localStorage.getItem(patchKey(m.lesson));
-        if(pl) { const list=JSON.parse(pl); console.log("PTBOT_LESSON the page found "+list.length+" saved lesson(s) for this track"); ch.postMessage({type:"patches",lesson:m.lesson||null,list:list}); }
+        if(pl) { const list=JSON.parse(pl); console.log("PTBOT_LESSON the page found "+list.length+" saved lesson(s) for this track"); rp({type:"patches",lesson:m.lesson||null,list:list}); }
       } catch (_) {}
       try {
         const tb=localStorage.getItem(tabuKey(m.lesson));
-        if(tb) ch.postMessage({type:"exact_tabu",lesson:m.lesson||null,list:JSON.parse(tb)});
+        if(tb) rp({type:"exact_tabu",lesson:m.lesson||null,list:JSON.parse(tb)});
       } catch (_) {}
       try {
         const ex=localStorage.getItem(exactKey(m.lesson));
-        if(ex) { const d=JSON.parse(ex); ch.postMessage({type:"exact",lesson:m.lesson||null,rle:d.rle,pos:d.pos,t:d.t,orle:d.orle,opos:d.opos}); }
+        if(ex) { const d=JSON.parse(ex); rp({type:"exact",lesson:m.lesson||null,rle:d.rle,pos:d.pos,t:d.t,orle:d.orle,opos:d.opos}); }
       } catch (_) {}
       try {
         const d=localStorage.getItem(storeKey(m.track));
-        ch.postMessage({type:"load",track:m.track||null,data:d?JSON.parse(d):null});
+        rp({type:"load",track:m.track||null,data:d?JSON.parse(d):null});
       } catch (_) {}
     } else if(m.type==="exact_tabu") {
       try { if(m.list&&m.list.length) localStorage.setItem(tabuKey(m.lesson),JSON.stringify(m.list)); else localStorage.removeItem(tabuKey(m.lesson)); } catch (_) {}
@@ -2910,7 +2945,7 @@ function setupMainThread() {
     } else if(m.type==="routeq") {
       let out={type:"routea",key:m.key,route:null,gap:null};
       try { const t=localStorage.getItem("ptbot_route_v1_"+m.key); if(t) { const o=JSON.parse(t); out.route=o.route; out.gap=o.gap||null; } } catch (_) {}
-      try { ch.postMessage(out); } catch (_) {}
+      try { rp(out); } catch (_) {}
     } else if(m.type==="route") {
       try {
         if(m.key && m.route) {
@@ -2947,7 +2982,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.2.4";
+    this.modVersion="1.2.5";
     this.touchingPhysics=true;
   }
 
