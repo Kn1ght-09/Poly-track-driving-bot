@@ -1302,6 +1302,7 @@ const WORKER_HELPERS = `
   }
 
   function failRun(why,state) {
+    if(PRIVATE && !bot.lapFailSent) { bot.lapFailSent=true; post({type:"lapfail",why:why,frames:state.frames}); }
     if(!LEARN || L.pending) return;
     if(L.run) L.run.failed=true;
     console.log("PTBOT_FAIL "+why+" | last 2s (time speed wanted offset steer keys): "+(bot.ring||[]).slice(-40).join(" | "));
@@ -2749,9 +2750,7 @@ function setupMainThread() {
     const frames=e[o]|(e[o+1]<<8)|(e[o+2]<<16); o+=3;
     const speed=d.getFloat32(o,true); o+=4;
     const flags=e[o++];
-    let finish=null;
-    if(flags&2) { finish=e[o]|(e[o+1]<<8)|(e[o+2]<<16); o+=3; }
-    return {frames:frames,speed:speed,finish:finish};
+    return {frames:frames,speed:speed,finished:!!(flags&2)};
   }
   // ptFastLap(40000): the bot drives one lap in its own hidden fast physics worker (the same kind the game uses for replays)
   window.ptFastLap=(frames)=>{
@@ -2763,7 +2762,14 @@ function setupMainThread() {
     if(window.__ptFastW) { try { window.__ptFastW.terminate(); } catch (_) {} window.__ptFastW=null; }
     const fw=new OW(URL.createObjectURL(new Blob([src.src],{type:"text/javascript"})),{name:"ptbot-private"});
     window.__ptFastW=fw;
-    let tGo=null, done=false, lastLog=0;
+    let tGo=null, done=false, lastLog=0, lastSt=null;
+    const stop=()=>{ try { fw.terminate(); } catch (_) {} if(window.__ptFastW===fw) window.__ptFastW=null; window.__ptFastEnd=null; };
+    window.__ptFastEnd=(why,fr)=>{
+      if(done) return; done=true;
+      const ms=tGo?Math.round(performance.now()-tGo):0;
+      console.log("PTBOT_FASTLAP the bot failed: "+why+" (sim frame "+fr+", "+(lastSt?Math.round(lastSt.speed):"?")+" km/h, after "+ms+" real ms)");
+      stop();
+    };
     fw.onerror=(e)=>console.log("PTBOT_FASTLAP worker error: "+(e&&e.message));
     let loaded=false;
     const load=()=>{
@@ -2780,10 +2786,11 @@ function setupMainThread() {
       if(d && d.messageType===9) { console.log("PTBOT_FASTLAP worker start-up test finished (deterministic: "+d.isDeterminstic+")"); load(); return; }
       if(done || !tGo || !d || d.messageType!==10 || !d.carStateBuffers || !d.carStateBuffers.length) return;
       const st=ptDecodeState(d.carStateBuffers[d.carStateBuffers.length-1]);
+      lastSt=st;
       const ms=Math.round(performance.now()-tGo);
       if(st.frames-lastLog>=5000) { lastLog=st.frames; console.log("PTBOT_FASTLAP sim frame "+st.frames+", "+Math.round(st.speed)+" km/h, after "+ms+" real ms"); }
-      if(st.finish!==null) { done=true; console.log("PTBOT_FASTLAP FINISHED the lap: "+(st.finish/1000).toFixed(3)+" s of game time in "+ms+" real ms ("+(st.finish/Math.max(1,ms)).toFixed(1)+"x real time)"); }
-      else if(st.frames>=frames-2) { done=true; console.log("PTBOT_FASTLAP reached the frame limit ("+frames+") without finishing, after "+ms+" real ms"); }
+      if(st.finished) { done=true; console.log("PTBOT_FASTLAP FINISHED the lap: "+(st.frames/1000).toFixed(3)+" s of game time in "+ms+" real ms ("+(st.frames/Math.max(1,ms)).toFixed(1)+"x real time)"); stop(); }
+      else if(st.frames>=frames-2) { done=true; console.log("PTBOT_FASTLAP reached the frame limit ("+frames+") without finishing, after "+ms+" real ms"); stop(); }
     };
     const go=()=>{
       tGo=performance.now();
@@ -2843,6 +2850,11 @@ function setupMainThread() {
 
   ch.onmessage=ev=>{
     const m=ev.data||{};
+    if(m.priv) {
+      if(m.type==="lapfail") { if(window.__ptFastEnd) window.__ptFastEnd(m.why,m.frames); return; }
+      if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd("the bot asked for a restart",m.frames||0); return; }
+      if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready") return;
+    }
     if(m.type==="hello") {
       lastTrackKey=m.track||null;
       lastLessonKey=m.lesson||null;
@@ -2924,7 +2936,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.2.2";
+    this.modVersion="1.2.3";
     this.touchingPhysics=true;
   }
 
