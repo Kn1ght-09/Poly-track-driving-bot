@@ -8,6 +8,7 @@ const MODE = "drive";
 // true = the bot also drives replay cars. The game simulates replays much faster than real time,
 // so this tests whether the bot can run at that speed. (For this test LEARN and EXACT_REPLAY are off.)
 const FAST_SIM = false;
+const FAST_SAVE_EXACT = true; // true = a faster exact replay found by the hidden fast bot (ptFastLoop) is saved for the track, like one the live bot finds. Nothing else from the hidden bot is saved.
 
 // Where the driving line comes from:
 //   "auto"      = use your recorded lap if it belongs to the loaded track, otherwise build a line from the track itself
@@ -998,6 +999,16 @@ const WORKER_HELPERS = `
 (() => {
   if (globalThis.__ptTutorialBot) return;
   const PRIVATE = (typeof self !== "undefined" && self.name === "ptbot-private");
+  if (PRIVATE) {
+    const __ol=console.log.bind(console); let __wn=0;
+    console.log=function() {
+      __ol.apply(null,arguments);
+      try {
+        const t=Array.prototype.map.call(arguments,a=>typeof a==="string"?a:JSON.stringify(a)).join(" ");
+        if(t.indexOf("PTBOT_")===0 && t.indexOf("PTBOT_STEPRATE")!==0 && t.indexOf("PTBOT_RESTART_CHECK")!==0 && __wn<4000) { __wn++; post({type:"wlog",text:t.length>260?t.slice(0,260)+"...":t}); }
+      } catch (_) {}
+    };
+  }
   const ROUTE_REC = ${JSON.stringify(ROUTE)};
   const ROUTE_SOURCE = ${JSON.stringify(ROUTE_SOURCE)};
   let ROUTE = ROUTE_REC;
@@ -1608,7 +1619,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
       const X=bot.exact;
       const exAbort=(why)=>{ if(!bot.exAbort) { bot.exAbort=true; console.log("PTBOT_OPT run "+bot.exRun+" stopped: "+why+(bot.exMut&&!bot.exControl?" - will not try that change again":"")); if(bot.exMut && !bot.exControl) exMark();
           if(bot.exVerify && bot.exCand===bot.exVerify.bits) { console.log("PTBOT_OPT the faster run did not repeat, dropped"); bot.exVerify=null; }
-          else if(bot.exControl) { bot.exCtlFail++; console.log("PTBOT_OPT CONTROL run failed: the same presses gave a different result ("+bot.exCtlFail+" in a row)"); if(bot.exCtlFail>=2) exRevert("the saved presses do not repeat"); } } if(!bot.exRs) { bot.exRs=true; post({type:"restart",delay:300}); } };
+          else if(bot.exControl) { bot.exCtlFail++; console.log("PTBOT_OPT CONTROL run failed: the same presses gave a different result ("+bot.exCtlFail+" in a row)"); if(bot.exCtlFail>=2) exRevert("the saved presses do not repeat"); } } if(!bot.exRs) { bot.exRs=true; post({type:"restart",delay:300,why:"attempt stopped: "+why}); } };
       if(bot.exStart===undefined || (bot.curE||0)<(bot.exLastE||0)) {
         bot.exStart=true; bot.exStep=0; bot.exMis=0; bot.exactOff=false; bot.exFin=false; bot.exAbort=false; bot.exRs=false;
         bot.exTraj=[]; bot.exCps=[]; bot.exLastCp=state.nextCheckpointIndex||0; bot.exactN=0; bot.exactLogs=0;
@@ -1663,7 +1674,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
             bot.exVerify={bits:bot.exCand,mut:bot.exMut,T:T};
           } else { exMark(); console.log("PTBOT_OPT run "+bot.exRun+" finished in "+(T/1000).toFixed(3)+" s - not faster, dropped and will not be tried again"); }
         }
-        if(!bot.exRs) { bot.exRs=true; post({type:"restart",delay:1500}); }
+        if(!bot.exRs) { bot.exRs=true; post({type:"restart",delay:1500,why:"finished the track"}); }
       }
       if(!bot.exactOff && !bot.exAbort && stepNo<X.n) {
         const tol=(mutating && !bot.exControl) ? EXACT_OPT_TOL : EXACT_TOL;
@@ -2800,8 +2811,10 @@ function setupMainThread() {
     window.__ptFastEnd=(why,fr)=>{
       if(why==="__stop__") { if(!allDone) { allDone=true; lapDone=true; summary(); stop(); } return; }
       if(String(why)==="finished the track") return;
-      const f=fr || (lastSt?lastSt.frames:0);
-      endLap(false,"failed: "+why+" (sim frame "+f+", "+(lastSt?Math.round(lastSt.speed):"?")+" km/h)",f);
+      setTimeout(()=>{
+        const f=fr || (lastSt?lastSt.frames:0);
+        endLap(false,"failed: "+why+" (sim frame "+f+", "+(lastSt?Math.round(lastSt.speed):"?")+" km/h)",f);
+      },25);
     };
     fw.onerror=(e)=>console.log("PTBOT_FASTLAP worker error: "+(e&&e.message));
     const startLap=()=>{
@@ -2895,10 +2908,11 @@ function setupMainThread() {
   ch.onmessage=ev=>{
     const m=ev.data||{};
     if(m.priv) {
+      if(m.type==="wlog") { console.log("PTBOT_W "+m.text); return; }
       if(m.type==="lapinfo") { console.log("PTBOT_FASTLAP what the hidden bot is using: "+JSON.stringify(m.info)); return; }
       if(m.type==="lapfail") { if(window.__ptFastEnd) window.__ptFastEnd(m.why,m.frames); return; }
       if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd(m.why||"the bot asked for a restart",m.frames||0); return; }
-      if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready") return;
+      if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready" && !(FAST_SAVE_EXACT && (m.type==="exact_save" || m.type==="exact_tabu"))) return;
     }
     const rp=(o)=>ch.postMessage(m.priv ? Object.assign({to:"priv"},o) : o);
     if(m.type==="hello") {
@@ -2924,6 +2938,7 @@ function setupMainThread() {
       try { if(m.list&&m.list.length) localStorage.setItem(tabuKey(m.lesson),JSON.stringify(m.list)); else localStorage.removeItem(tabuKey(m.lesson)); } catch (_) {}
     } else if(m.type==="exact_save") {
       try {
+        if(m.priv && m.t>0) console.log("PTBOT_FASTLAP the hidden bot found a faster exact replay: "+(m.t/1000).toFixed(3)+" s (saved for this track)");
         if(m.rle&&m.rle.length) { localStorage.setItem(exactKey(m.lesson),JSON.stringify({rle:m.rle,pos:m.pos,t:m.t,orle:m.orle,opos:m.opos})); console.log("PTBOT_EXACT the page saved the exact replay for this track"); } else localStorage.removeItem(exactKey(m.lesson));
       } catch (_) {}
     } else if(m.type==="patches_save") {
@@ -2982,7 +2997,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.2.5";
+    this.modVersion="1.2.7";
     this.touchingPhysics=true;
   }
 
