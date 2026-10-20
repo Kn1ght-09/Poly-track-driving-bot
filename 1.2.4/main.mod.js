@@ -1337,7 +1337,7 @@ const WORKER_HELPERS = `
       return Math.round(c);
     }
 
-    if(LEARN && maxS>0) {
+    if(LEARN && maxS>0 && !bot.noExplore) {
       for(let s=0;s<maxS;s++) { if(Math.random()<0.4) mutated.push(s); }
       if(!mutated.length) mutated.push(Math.floor(Math.random()*maxS));
 
@@ -2507,6 +2507,14 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
   try {
     const origOnMessage=onmessage;
     onmessage=function(ev) {
+      const cm=ev.data;
+      if(cm && cm.ptCfg) {
+        try {
+          if(cm.ptCfg==="explore") bot.noExplore=!cm.on;
+          else if(cm.ptCfg==="info") post({type:"lapinfo",info:{line:bot.routeKind||null,points:N,lessons:(bot.patches||[]).length,exactReplay:bot.exact?bot.exact.n:0,ghostCheckpoints:L.best&&L.best.gt?L.best.gt.length:0,runNo:L.runNo,exploring:!bot.noExplore}});
+        } catch(err) { console.log("PTBOT_FASTLAP config failed: "+String(err)); }
+        return;
+      }
       try { captureTrack(ev.data); } catch(err) { console.log("PTBOT_TRACK capture failed: "+String(err)); }
       return origOnMessage.call(this,ev);
     };
@@ -2753,7 +2761,7 @@ function setupMainThread() {
     return {frames:frames,speed:speed,finished:!!(flags&2)};
   }
   // ptFastLap(40000): the bot drives one lap in its own hidden fast physics worker (the same kind the game uses for replays)
-  window.ptFastLap=(frames)=>{
+  window.ptFastLap=(frames,explore)=>{
     frames=frames||40000;
     const OW=window.__ptOrigWorker;
     const src=(window.__ptWorkers||[]).filter(e=>e.src && e.src.length>500000).pop();
@@ -2775,7 +2783,8 @@ function setupMainThread() {
     const load=()=>{
       if(loaded) return;
       loaded=true;
-      console.log("PTBOT_FASTLAP the worker has started, loading the track");
+      console.log("PTBOT_FASTLAP the worker has started, loading the track (the bot "+(explore?"will try small changes":"drives its best known line, no experiments")+")");
+      fw.postMessage({ptCfg:"explore",on:!!explore});
       fw.postMessage(Object.assign({},structuredClone(window.__ptM0),{isRealtime:false}));
       fw.postMessage(Object.assign({},structuredClone(window.__ptM3),{carId:0,carRecording:null}));
       window.__ptFastWait=go;
@@ -2795,6 +2804,7 @@ function setupMainThread() {
     const go=()=>{
       tGo=performance.now();
       console.log("PTBOT_FASTLAP the route is ready, running up to "+frames+" frames flat out");
+      fw.postMessage({ptCfg:"info"});
       fw.postMessage({messageType:5,carId:0,targetSimulationTimeFrames:frames});
     };
     setTimeout(()=>{ if(!loaded) { console.log("PTBOT_FASTLAP no start-up answer after 15 s, loading the track anyway"); load(); } },15000);
@@ -2851,6 +2861,7 @@ function setupMainThread() {
   ch.onmessage=ev=>{
     const m=ev.data||{};
     if(m.priv) {
+      if(m.type==="lapinfo") { console.log("PTBOT_FASTLAP what the hidden bot is using: "+JSON.stringify(m.info)); return; }
       if(m.type==="lapfail") { if(window.__ptFastEnd) window.__ptFastEnd(m.why,m.frames); return; }
       if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd("the bot asked for a restart",m.frames||0); return; }
       if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready") return;
@@ -2936,7 +2947,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.2.3";
+    this.modVersion="1.2.4";
     this.touchingPhysics=true;
   }
 
