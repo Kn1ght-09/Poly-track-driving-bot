@@ -50,7 +50,7 @@ const BRAKE_MS = 40;  // too fast for this long (ms) before braking
 const CURV_DEAD = 0.03; // tiny wobbles in the line (under this many radians per point) don't count as a corner, so the bot stops slowing down in straight corridors
 const EXACT_REPLAY = true; // a replay you teach (O while a replay plays) is also stored frame by frame; the bot presses exactly those buttons from the start, and only takes over if the car leaves the replay's path
 const EXACT_OPT = true; // on a track with an exact replay the bot tries one tiny change per run (a press moved a few thousandths of a second earlier or later) and keeps it only if the run finishes faster
-const EXACT_TAP = false; // on later runs of an exact replay the bot tries fast tapping instead of long steering holds (skids less), keeps whichever finishes first
+const EXACT_TAP = true; // some of the changes the bot tries on an exact replay turn a long steering hold into fast taps (1 ms steps, skids less); a faster result is checked once more and kept like any other
 const EXACT_TAP_RUN = 100; // only steering holds at least this many ms long are turned into taps
 const EXACT_TAP_TOL = 6; // metres off the replay's path allowed while a tap variant is being tried
 const EXACT_TOL = 2.5;
@@ -1629,8 +1629,28 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
         else if(bot.exStrict && bot.exRun%4===0) { bot.exControl=true; }
         else if(EXACT_OPT && bot.exBestT<Infinity) {
           const cand=X.bits.slice(), lim=Math.min(X.n,bot.exBestT+5);
-          let f=-1, k=0;
-          for(let tries=0;tries<400 && lim>10;tries++) {
+          let f=-1, k=0, tapped=false;
+          if(EXACT_TAP && Math.random()<0.4) {
+            // FAST TAPS: a long steering hold becomes quick on/off pulses (1 ms steps), which can steer less hard than a full hold
+            const runs=[]; let g0=0;
+            while(g0<lim) {
+              const st=X.bits[g0]&10;
+              if(!st) { g0++; continue; }
+              let h0=g0; while(h0<lim && (X.bits[h0]&10)===st) h0++;
+              if(h0-g0>=EXACT_TAP_RUN) runs.push([g0,h0]);
+              g0=h0;
+            }
+            if(runs.length) {
+              const r=runs[Math.floor(Math.random()*runs.length)];
+              const P=[2,3,4,5,6,8][Math.floor(Math.random()*6)];
+              const on=Math.max(1,Math.min(P-1,Math.round(P*(0.3+Math.random()*0.5))));
+              const len=r[1]-r[0], cutA=Math.floor(Math.random()*Math.min(40,len/2)), cutB=Math.floor(Math.random()*Math.min(40,len/2));
+              const a=r[0]+cutA, b=r[1]-cutB;
+              for(let h=a;h<b;h++) if(((h-a)%P)>=on) cand[h]&=~10;
+              bot.exCand=cand; bot.exMut={f:a,k:P*10+on,tap:true,P:P,on:on,len:b-a}; tapped=true;
+            }
+          }
+          for(let tries=0;!tapped && tries<400 && lim>10;tries++) {
             const g=1+Math.floor(Math.random()*(lim-2));
             if(cand[g]!==cand[g-1] && ((cand[g]^cand[g-1])&~1)) {
               const kk=(1+Math.floor(Math.random()*4))*(Math.random()<0.5?-1:1);
@@ -1643,7 +1663,7 @@ console.log("PTBOT_CHECKPOINT_DIAG", {
             bot.exCand=cand; bot.exMut={f:f,k:k};
           }
         }
-        console.log("PTBOT_OPT run "+bot.exRun+": "+(bot.exControl ? "CONTROL run: the best presses unchanged, should repeat the best time exactly" : bot.exVerify ? "checking that the faster run repeats" : bot.exMut ? "trying a press moved "+(bot.exMut.k>0?"later":"earlier")+" by "+Math.abs(bot.exMut.k)+" ms at "+(bot.exMut.f/1000).toFixed(2)+" s" : "the replay as it is")+(bot.exBestT<Infinity ? " (best so far "+(bot.exBestT/1000).toFixed(3)+" s)" : ""));
+        console.log("PTBOT_OPT run "+bot.exRun+": "+(bot.exControl ? "CONTROL run: the best presses unchanged, should repeat the best time exactly" : bot.exVerify ? "checking that the faster run repeats" : bot.exMut && bot.exMut.tap ? "trying fast taps: "+bot.exMut.on+" ms on every "+bot.exMut.P+" ms for "+bot.exMut.len+" ms of steering, from "+(bot.exMut.f/1000).toFixed(2)+" s" : bot.exMut ? "trying a press moved "+(bot.exMut.k>0?"later":"earlier")+" by "+Math.abs(bot.exMut.k)+" ms at "+(bot.exMut.f/1000).toFixed(2)+" s" : "the replay as it is")+(bot.exBestT<Infinity ? " (best so far "+(bot.exBestT/1000).toFixed(3)+" s)" : ""));
       }
       bot.exLastE=bot.curE||0;
       const stepNo=bot.exStep++;
@@ -2912,6 +2932,14 @@ function setupMainThread() {
       if(m.type==="lapinfo") { console.log("PTBOT_FASTLAP what the hidden bot is using: "+JSON.stringify(m.info)); return; }
       if(m.type==="lapfail") { if(window.__ptFastEnd) window.__ptFastEnd(m.why,m.frames); return; }
       if(m.type==="restart") { if(window.__ptFastEnd) window.__ptFastEnd(m.why||"the bot asked for a restart",m.frames||0); return; }
+      if(m.type==="exact_save") {
+        // the hidden bot may only save a verified, faster exact replay, and only if it beats the one already stored
+        // (never a "go back to the original" or a clear, which would throw away what the live bot found)
+        try {
+          const old=JSON.parse(localStorage.getItem(exactKey(m.lesson))||"null");
+          if(!(FAST_SAVE_EXACT && m.rle && m.rle.length && m.t>0 && (!old || !(old.t>0) || m.t<old.t))) return;
+        } catch (_) { return; }
+      }
       if(m.type!=="hello" && m.type!=="routeq" && m.type!=="routeready" && !(FAST_SAVE_EXACT && (m.type==="exact_save" || m.type==="exact_tabu"))) return;
     }
     const rp=(o)=>ch.postMessage(m.priv ? Object.assign({to:"priv"},o) : o);
@@ -2939,7 +2967,10 @@ function setupMainThread() {
     } else if(m.type==="exact_save") {
       try {
         if(m.priv && m.t>0) console.log("PTBOT_FASTLAP the hidden bot found a faster exact replay: "+(m.t/1000).toFixed(3)+" s (saved for this track)");
-        if(m.rle&&m.rle.length) { localStorage.setItem(exactKey(m.lesson),JSON.stringify({rle:m.rle,pos:m.pos,t:m.t,orle:m.orle,opos:m.opos})); console.log("PTBOT_EXACT the page saved the exact replay for this track"); } else localStorage.removeItem(exactKey(m.lesson));
+        if(m.rle&&m.rle.length) { localStorage.setItem(exactKey(m.lesson),JSON.stringify({rle:m.rle,pos:m.pos,t:m.t,orle:m.orle,opos:m.opos})); console.log("PTBOT_EXACT the page saved the exact replay for this track");
+          // a faster run from the hidden bot also goes straight to the live bot, which uses it from its next attempt
+          if(m.priv) { try { ch.postMessage({type:"exact",lesson:m.lesson||null,rle:m.rle,pos:m.pos,t:m.t,orle:m.orle,opos:m.opos}); console.log("PTBOT_FASTLAP sent the faster run to the live bot"); } catch (_) {} }
+        } else localStorage.removeItem(exactKey(m.lesson));
       } catch (_) {}
     } else if(m.type==="patches_save") {
       try {
@@ -2997,7 +3028,7 @@ class TutorialBot extends PolyMod {
     this.modName="PolyTrack Tutorial Bot";
     this.modAuthor="Kn1ght-09";
     this.modID="polytrack-tutorial-bot";
-    this.modVersion="1.2.7";
+    this.modVersion="1.3.0";
     this.touchingPhysics=true;
   }
 
